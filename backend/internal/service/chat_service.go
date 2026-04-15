@@ -278,9 +278,6 @@ func (s *ChatService) buildSkillContext(botID string, skillIDs []string) (string
 		if err != nil {
 			return "", err
 		}
-		if !sk.StoredOn0G {
-			return "", fmt.Errorf("skill %s is not uploaded to 0G yet", id)
-		}
 		if strings.TrimSpace(sk.Content) == "" {
 			continue
 		}

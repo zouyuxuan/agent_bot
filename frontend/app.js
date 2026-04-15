@@ -201,7 +201,7 @@ function renderDatasets(samples) {
 function renderSkills(skills) {
   if (!skillsList || !skillsSummary) return;
   const raw = Array.isArray(skills) ? skills : [];
-  skillsSummary.textContent = raw.length ? `已上传 ${raw.length} 个 Skills（按文件夹分组）。勾选文件夹后可在对话中启用。` : "暂无 Skills。请先从 GitHub 拉取，然后发布到 0G。";
+  skillsSummary.textContent = raw.length ? `已上传 ${raw.length} 个 Skills（按文件夹分组）。勾选文件夹后可在对话中启用。` : "暂无 Skills。请先从 GitHub 拉取或上传 Skills。";
   if (skillsPublishBundleBtn) {
     const pending = raw.filter((s) => !s.storedOn0G).length;
     skillsPublishBundleBtn.disabled = pending === 0;
@@ -235,7 +235,6 @@ function renderSkills(skills) {
     div.className = "skill-folder-item";
 
     const checked = state.selectedSkillFolders.has(f.folder);
-    const enableDisabled = f.pending > 0;
     const names = f.items
       .slice()
       .sort((a, b) => String(a.filename || "").localeCompare(String(b.filename || "")))
@@ -251,13 +250,13 @@ function renderSkills(skills) {
     div.innerHTML = `
       <div class="row">
         <div class="skill-title">
-          <input type="checkbox" data-skill-folder-check="${escapeHtml(f.folder)}" ${checked ? "checked" : ""} ${enableDisabled ? "disabled" : ""} />
+          <input type="checkbox" data-skill-folder-check="${escapeHtml(f.folder)}" ${checked ? "checked" : ""} />
           <strong>${escapeHtml(f.folder)}</strong>
         </div>
       </div>
       <small class="hint">文件数：${f.items.length}；待发布：${f.pending}</small>
       <small class="hint">Skills：${escapeHtml(preview || "-")}</small>
-      <small class="hint">状态：${f.pending === 0 ? "已上链（可启用）" : "待发布到 0G（发布后才能启用）"}</small>
+      <small class="hint">状态：${f.pending === 0 ? "已上链" : "未上链"}（未上链也可启用；发布仅用于 0G 存储/分享）</small>
     `;
     skillsList.append(div);
   });
@@ -489,7 +488,6 @@ async function handleChatSubmit(event) {
     const folderSet = new Set(Array.from(state.selectedSkillFolders || []));
     if (folderSet.size) {
       for (const sk of state.skills || []) {
-        if (!sk?.storedOn0G) continue;
         const fn = String(sk.filename || "").trim();
         const folder = fn.includes("/") ? fn.split("/")[0] : "(root)";
         if (folderSet.has(folder)) enabledSkillIDs.push(sk.id);
@@ -1138,7 +1136,6 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
   for (const id of ids) {
     const sk = (state.skills || []).find((x) => x?.id === id);
     if (!sk) continue;
-    if (!sk.storedOn0G) continue;
     if (!looksLikeX402SkillContent(sk.content)) continue;
     selected.push(sk);
   }

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -44,12 +45,12 @@ func (s *ChatService) ImportSkillsFromGitHub(ctx context.Context, botID string, 
 	}
 
 	zipURL := fmt.Sprintf("https://codeload.github.com/%s/%s/zip/%s", owner, repo, url.PathEscape(ref))
-	rawZip, err := fetchBytes(ctx, zipURL, 12<<20) // 12MB
+	rawZip, err := fetchGitHubZip(ctx, zipURL, 32<<20) // 32MB
 	if err != nil {
 		// fallback to master if default guess fails
 		if ref == "main" {
 			zipURL2 := fmt.Sprintf("https://codeload.github.com/%s/%s/zip/%s", owner, repo, "master")
-			if raw2, err2 := fetchBytes(ctx, zipURL2, 12<<20); err2 == nil {
+			if raw2, err2 := fetchGitHubZip(ctx, zipURL2, 32<<20); err2 == nil {
 				rawZip = raw2
 				ref = "master"
 				err = nil
@@ -112,6 +113,10 @@ func githubDefaultBranch(ctx context.Context, owner, repo string) (string, error
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, api, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "agent-bot")
+	if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
@@ -129,25 +134,57 @@ func githubDefaultBranch(ctx context.Context, owner, repo string) (string, error
 	return strings.TrimSpace(data.DefaultBranch), nil
 }
 
-func fetchBytes(ctx context.Context, u string, max int64) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	resp, err := http.DefaultClient.Do(req)
+func fetchGitHubZip(ctx context.Context, u string, max int64) ([]byte, error) {
+	b, ct, err := fetchBytes(ctx, u, max, func(req *http.Request) {
+		req.Header.Set("User-Agent", "agent-bot")
+		req.Header.Set("Accept", "application/zip, application/octet-stream;q=0.9, */*;q=0.1")
+		if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
+	if err := validateZipBytes(b); err != nil {
+		// Add context to help debugging common GitHub responses (HTML, rate limit, etc.).
+		return nil, fmt.Errorf("github zip invalid (content-type=%q): %w", ct, err)
+	}
+	return b, nil
+}
+
+func fetchBytes(ctx context.Context, u string, max int64, setHeaders func(*http.Request)) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if setHeaders != nil {
+		setHeaders(req)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("http %d fetching %s", resp.StatusCode, u)
+		return nil, resp.Header.Get("Content-Type"), fmt.Errorf("http %d fetching %s", resp.StatusCode, u)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, max))
+	// Read at most max+1 bytes so we can detect truncation cleanly.
+	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, resp.Header.Get("Content-Type"), err
+	}
+	if int64(len(b)) > max {
+		return nil, resp.Header.Get("Content-Type"), fmt.Errorf("download too large (>%d bytes) fetching %s", max, u)
+	}
+	return b, resp.Header.Get("Content-Type"), nil
 }
 
 func importSkillsFromZip(ctx context.Context, s *ChatService, botID string, rawZip []byte, subPath string) ([]domain.Skill, error) {
 	zr, err := zip.NewReader(bytes.NewReader(rawZip), int64(len(rawZip)))
 	if err != nil {
-		return nil, errors.New("invalid zip from github")
+		if len(rawZip) >= 2 && rawZip[0] == 'P' && rawZip[1] == 'K' {
+			return nil, errors.New("github zip appears corrupt or truncated")
+		}
+		return nil, validateZipBytes(rawZip)
 	}
 
 	subPath = strings.Trim(strings.TrimSpace(subPath), "/")
@@ -242,3 +279,30 @@ func importSkillsFromZip(ctx context.Context, s *ChatService, botID string, rawZ
 	return created, nil
 }
 
+func validateZipBytes(b []byte) error {
+	if len(b) == 0 {
+		return errors.New("empty download from github")
+	}
+	// ZIP files start with "PK". If not, it's often an HTML error page or plaintext message.
+	if len(b) >= 2 && b[0] == 'P' && b[1] == 'K' {
+		return nil
+	}
+	low := strings.ToLower(string(b[:min(len(b), 512)]))
+	if strings.Contains(low, "<html") || strings.Contains(low, "<!doctype html") {
+		return errors.New("github returned html instead of a zip (repo may be private, blocked, or rate limited)")
+	}
+	if strings.Contains(low, "rate limit") || strings.Contains(low, "api rate limit") {
+		return errors.New("github rate limit exceeded (set GITHUB_TOKEN to increase rate limits)")
+	}
+	if strings.Contains(low, "sign in") || strings.Contains(low, "login") {
+		return errors.New("github requires authentication to download this repo (private repo?)")
+	}
+	return errors.New("github returned non-zip content")
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
