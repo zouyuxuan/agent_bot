@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="AI Bot Chain Studio">
+  <defs>
+    <linearGradient id="g" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00c983"/>
+      <stop offset="0.55" stop-color="#19c6b0"/>
+      <stop offset="1" stop-color="#2fa6ff"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="160" y1="140" x2="360" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.78"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="
+        1 0 0 0 0
+        0 1 0 0 0
+        0 0 1 0 0
+        0 0 0 0.28 0" result="bb"/>
+      <feMerge>
+        <feMergeNode in="bb"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="56" y="56" width="400" height="400" rx="96" fill="url(#g)"/>
+
+  <!-- Subtle grid -->
+  <g opacity="0.12">
+    <path d="M96 136H416M96 200H416M96 264H416M96 328H416M96 392H416" stroke="#ffffff" stroke-width="2"/>
+    <path d="M136 96V416M200 96V416M264 96V416M328 96V416M392 96V416" stroke="#ffffff" stroke-width="2"/>
+  </g>
+
+  <!-- Main mark: chat bubble + chain link + node graph -->
+  <g filter="url(#softGlow)">
+    <!-- Chat bubble -->
+    <path d="M152 164c0-22 18-40 40-40h128c22 0 40 18 40 40v96c0 22-18 40-40 40H238l-44 36c-5 4-12 0-12-6v-30h10c-22 0-40-18-40-40v-96z"
+          fill="url(#g2)" stroke="rgba(10,24,20,0.16)" stroke-width="2"/>
+
+    <!-- Chain link (two interlocking rounded rectangles) -->
+    <g transform="translate(0,0)">
+      <path d="M216 230c0-16 13-29 29-29h24c16 0 29 13 29 29s-13 29-29 29h-24c-16 0-29-13-29-29z"
+            fill="none" stroke="rgba(0,122,92,0.55)" stroke-width="14" stroke-linecap="round"/>
+      <path d="M256 230c0-16 13-29 29-29h24c16 0 29 13 29 29s-13 29-29 29h-24c-16 0-29-13-29-29z"
+            fill="none" stroke="rgba(47,166,255,0.55)" stroke-width="14" stroke-linecap="round"/>
+    </g>
+
+    <!-- Node graph -->
+    <g>
+      <path d="M192 260C210 242 224 234 256 234c34 0 54 12 72 34" fill="none" stroke="rgba(10,24,20,0.22)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M196 288c26-10 42-10 60 0 18 10 30 22 64 22" fill="none" stroke="rgba(10,24,20,0.18)" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="192" cy="260" r="7" fill="#00c983"/>
+      <circle cx="256" cy="234" r="7" fill="#19c6b0"/>
+      <circle cx="328" cy="268" r="7" fill="#2fa6ff"/>
+      <circle cx="196" cy="288" r="6" fill="#00c983" opacity="0.9"/>
+      <circle cx="256" cy="288" r="6" fill="#19c6b0" opacity="0.9"/>
+      <circle cx="320" cy="310" r="6" fill="#2fa6ff" opacity="0.9"/>
+    </g>
+  </g>
+</svg>
+

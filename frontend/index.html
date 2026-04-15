@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Bot Chain Studio</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="panel profile-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Bot Studio</p>
+          <div class="brand">
+            <img class="brand-logo" src="./assets/logo.svg" alt="logo" />
+            <h1>链上成长型 AI 聊天机器人</h1>
+          </div>
+        </div>
+
+        <div id="wallet-box" class="wallet-box wallet-box-top">
+          <div class="section-title">钱包授权（MetaMask）</div>
+          <button id="wallet-connect" type="button" class="secondary">登录钱包</button>
+          <p id="wallet-status" class="hint"></p>
+        </div>
+
+        <form id="bot-form" class="bot-form">
+          <label>
+            机器人名称
+            <input name="name" placeholder="Nova" required />
+          </label>
+          <label>
+            性格
+            <input name="personality" placeholder="理性、温暖、擅长陪伴" />
+          </label>
+          <label>
+            性别
+            <select name="gender">
+              <option value="neutral">中性</option>
+              <option value="female">女性</option>
+              <option value="male">男性</option>
+            </select>
+          </label>
+          <label>
+            照片 URL
+            <input name="avatarUrl" placeholder="https://example.com/avatar.png" />
+          </label>
+          <label>
+            默认模型 ID
+            <select id="bot-model-preset">
+              <option value="">自定义...</option>
+              <option value="gpt-4o-mini">OpenAI: gpt-4o-mini</option>
+              <option value="gpt-4o">OpenAI: gpt-4o</option>
+              <option value="gpt-4.1-mini">OpenAI: gpt-4.1-mini</option>
+              <option value="gpt-4.1">OpenAI: gpt-4.1</option>
+              <option value="deepseek-chat">DeepSeek: deepseek-chat</option>
+              <option value="deepseek-reasoner">DeepSeek: deepseek-reasoner</option>
+              <option value="MiniMax-M2.5">MiniMax: MiniMax-M2.5</option>
+              <option value="MiniMax-M2.5-highspeed">MiniMax: MiniMax-M2.5-highspeed</option>
+              <option value="qwen-plus">Qwen: qwen-plus</option>
+              <option value="qwen-max">Qwen: qwen-max</option>
+              <option value="moonshot-v1-8k">Moonshot: moonshot-v1-8k</option>
+              <option value="glm-4">Zhipu: glm-4</option>
+              <option value="claude-3.5-sonnet">Anthropic: claude-3.5-sonnet</option>
+              <option value="gemini-1.5-pro">Google: gemini-1.5-pro</option>
+            </select>
+            <input id="bot-model-custom" name="modelType" placeholder="也可以直接输入模型 ID" />
+          </label>
+          <label>
+            系统提示词
+            <textarea name="systemPrompt" rows="4" placeholder="描述机器人长期成长的规则、边界和价值观"></textarea>
+          </label>
+          <button type="submit">创建 / 更新机器人</button>
+        </form>
+
+        <div class="bot-selector">
+          <div class="section-title">已创建机器人</div>
+          <select id="bot-list"></select>
+          <button id="refresh-bots" class="secondary">刷新列表</button>
+        </div>
+
+        <div class="llm-config">
+          <div class="section-title">大模型调用（使用机器人默认模型）</div>
+          <label>
+            API Key
+            <input id="llm-apikey" type="password" placeholder="sk-..." />
+          </label>
+          <label>
+            Temperature
+            <input id="llm-temp" type="number" step="0.1" min="0" max="2" value="0.7" />
+          </label>
+          <div class="debug-toggle">
+            <input id="debug-skills" type="checkbox" />
+            <label for="debug-skills" class="debug-toggle-label">调试：显示本轮使用的 Skills</label>
+          </div>
+          <p class="hint">提示：只需选择机器人“默认模型 ID”并填写 API Key，即可直接调用对应大模型；无需再手动配置 Provider/Base URL。</p>
+          <p class="hint">如果回复经常“中途断掉”，通常是模型输出长度受限；当前前端已将单次最大输出提高到 2048 tokens。</p>
+        </div>
+      </aside>
+
+      <main class="panel chat-panel">
+        <div class="chat-header">
+          <div>
+            <p class="eyebrow">Conversation</p>
+            <h2 id="active-bot-name">请选择或创建机器人</h2>
+            <p id="llm-status" class="hint"></p>
+          </div>
+          <div class="growth-card">
+            <span>成长值</span>
+            <strong id="growth-score">0</strong>
+          </div>
+        </div>
+
+        <div id="chat-stream" class="chat-stream"></div>
+
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" placeholder="输入消息，积累训练数据" />
+          <button type="submit">发送</button>
+        </form>
+        <p class="hint" style="margin-top:10px;">
+          提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
+        </p>
+      </main>
+
+      <aside class="panel dataset-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Training</p>
+          <h2>训练样本与 0G 存储</h2>
+        </div>
+
+        <div class="skills-box">
+          <div class="section-title">Skills（从 GitHub 拉取并发布到 0G）</div>
+          <div class="skills-import">
+            <label>
+              GitHub Skills 地址
+              <input id="skills-github-url" placeholder="https://github.com/owner/repo/tree/main/path/to/skills" />
+            </label>
+            <button id="skills-github-import-publish" class="primary" type="button">拉取并发布到 0G</button>
+          </div>
+          <p id="skills-summary" class="hint"></p>
+          <button id="skills-publish-bundle" class="primary" type="button">发布未上链 Skills 到 0G</button>
+          <div id="skills-list" class="skills-list"></div>
+        </div>
+
+        <div class="x402-box collapsed" id="x402-box">
+          <button id="x402-toggle" class="x402-toggle" type="button" aria-expanded="false">
+            <span class="section-title">x402 测试面板（按次付费 HTTP 访问）</span>
+            <span class="x402-chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="x402-body">
+            <p class="hint">需要先登录钱包。浏览器将使用 x402 SDK + MetaMask 在需要支付时弹出签名确认，并自动重试请求。</p>
+            <label>
+              URL
+              <input id="x402-url" placeholder="https://sandbox.agentrails.io/api/x402/protected/analysis" />
+            </label>
+            <div class="debug-toggle" style="margin-top: 6px;">
+              <input id="x402-use-proxy" type="checkbox" checked />
+              <label for="x402-use-proxy" class="debug-toggle-label">使用后端转发（解决 CORS，推荐）</label>
+            </div>
+            <label>
+              Method
+              <select id="x402-method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+            </label>
+            <label>
+              Headers (JSON，可选)
+              <textarea id="x402-headers" rows="3" placeholder='{"accept":"application/json"}'></textarea>
+            </label>
+            <label>
+              Body (JSON，可选，仅非 GET/HEAD 使用)
+              <textarea id="x402-body" rows="4" placeholder='{"query":"hello"}'></textarea>
+            </label>
+            <label>
+              Timeout (ms)
+              <input id="x402-timeout" type="number" min="1000" step="500" value="45000" />
+            </label>
+            <button id="x402-send" class="secondary" type="button">发送 x402 请求</button>
+            <pre id="x402-output" class="x402-output"></pre>
+          </div>
+        </div>
+
+        <label>
+          ZGS 节点（可选）
+          <textarea id="zgs-nodes" rows="3" placeholder="建议留空：后端将通过 0G indexer 自动发现节点；如需手动指定则填入 URL（逗号分隔）。如果出现 no reachable ZGS nodes，请清空此处再试。"></textarea>
+        </label>
+        <button id="publish-btn">发布训练数据到 0G</button>
+        <p id="publish-result" class="publish-result"></p>
+        <div id="dataset-list" class="dataset-list"></div>
+      </aside>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+  </html>
