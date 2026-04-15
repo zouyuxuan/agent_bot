@@ -243,7 +243,9 @@ button.primary {
 .chat-panel {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  min-height: calc(100vh - 48px);
+  height: calc(100vh - 48px);
+  overflow: hidden;
+  min-height: 0;
 }
 
 .chat-header {
@@ -251,6 +253,17 @@ button.primary {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+.chat-composer {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.chat-form {
+  grid-template-columns: 1fr auto;
+  align-items: end;
 }
 
 .growth-card {
@@ -323,18 +336,7 @@ button.primary {
   justify-self: start;
   background: rgba(255, 255, 255, 0.86);
   border: 1px solid rgba(47, 166, 255, 0.18);
-  max-height: clamp(160px, 42vh, 520px);
-  overflow: auto;
-}
-
-.bubble.assistant::-webkit-scrollbar {
-  width: 10px;
-}
-
-.bubble.assistant::-webkit-scrollbar-thumb {
-  background: rgba(10, 24, 20, 0.22);
-  border-radius: 999px;
-  border: 3px solid rgba(255, 255, 255, 0.72);
+  max-width: 92%;
 }
 
 .dataset-list {
@@ -532,6 +534,7 @@ button.primary {
   }
 
   .chat-panel {
+    height: auto;
     min-height: 520px;
   }
 

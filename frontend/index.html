@@ -113,13 +113,15 @@
 
         <div id="chat-stream" class="chat-stream"></div>
 
-        <form id="chat-form" class="chat-form">
-          <input id="chat-input" placeholder="输入消息，积累训练数据" />
-          <button type="submit">发送</button>
-        </form>
-        <p class="hint" style="margin-top:10px;">
-          提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
-        </p>
+        <div class="chat-composer">
+          <form id="chat-form" class="chat-form">
+            <input id="chat-input" placeholder="输入消息，积累训练数据" />
+            <button type="submit">发送</button>
+          </form>
+          <p class="hint">
+            提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
+          </p>
+        </div>
       </main>
 
       <aside class="panel dataset-panel">
