@@ -97,7 +97,7 @@ go run ./backend/cmd/server
 
 ### 0G 环境变量
 
-- `ZERO_G_PRIVATE_KEY` 你的 EVM 私钥（必填才会走真实上传）
+- `ZERO_G_PRIVATE_KEY` EVM 私钥
 - `ZERO_G_EVM_RPC` 默认 `https://evmrpc-testnet.0g.ai`
 - `ZERO_G_INDEXER_RPC` 默认 `https://indexer-storage-testnet-standard.0g.ai`
 - `ZERO_G_UPLOAD_METHOD` 默认 `min`
@@ -106,20 +106,3 @@ go run ./backend/cmd/server
 - `ZERO_G_RPC_TIMEOUT_MS` 默认 `30000`，ZGS/EVM RPC 单次请求超时（毫秒）
 - `ZERO_G_ZGS_PROBE_TIMEOUT_MS` 默认 `3500`，发布前探测 ZGS 节点可达性超时（毫秒）
 
-### 兼容旧配置
-
-保留了 `ZERO_G_ENDPOINT` 作为本地模拟引用的前缀（可选），但真实上传不再依赖它。
-
-如果你后续把训练流水线做完整，建议按下面的方式演进：
-
-1. 在 `zerog.Client` 中补充认证、上传、交易确认逻辑
-2. 将训练样本导出为 JSONL 或分片文件
-3. 为每个训练任务记录数据集版本、哈希、链上交易 ID
-4. 将“训练完成后的新模型版本”再回写到机器人资料中
-
-## 下一步建议
-
-1. 接入真实 LLM 推理服务，而不是当前的规则生成回复
-2. 使用 PostgreSQL 或 Redis 替换内存存储
-3. 增加用户系统、Bot 所有权、数据权限控制
-4. 将训练流水线拆分为采集、清洗、标注、训练、模型注册五个阶段
