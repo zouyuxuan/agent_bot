@@ -67,6 +67,14 @@ func NewService() *Service {
 	}
 }
 
+func (s *Service) cleanupExpiredNoncesLocked(now time.Time) {
+	for k, v := range s.nonces {
+		if v.used || now.After(v.expiresAt) {
+			delete(s.nonces, k)
+		}
+	}
+}
+
 func (s *Service) NewChallenge(address string, chainID string, origin string) (NonceChallenge, error) {
 	addr := strings.ToLower(strings.TrimSpace(address))
 	if !common.IsHexAddress(addr) {
@@ -83,6 +91,7 @@ func (s *Service) NewChallenge(address string, chainID string, origin string) (N
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.cleanupExpiredNoncesLocked(now)
 	s.nonces[addr] = nonceRecord{
 		address:   addr,
 		message:   msg,
@@ -114,6 +123,8 @@ func (s *Service) Verify(ctx context.Context, address, message, signature string
 	}
 
 	s.mu.Lock()
+	now := time.Now()
+	s.cleanupExpiredNoncesLocked(now)
 	rec, ok := s.nonces[addr]
 	s.mu.Unlock()
 	if !ok {
@@ -122,7 +133,10 @@ func (s *Service) Verify(ctx context.Context, address, message, signature string
 	if rec.used {
 		return Session{}, errors.New("nonce already used (please login again)")
 	}
-	if time.Now().After(rec.expiresAt) {
+	if now.After(rec.expiresAt) {
+		s.mu.Lock()
+		delete(s.nonces, addr)
+		s.mu.Unlock()
 		return Session{}, errors.New("nonce expired (please login again)")
 	}
 	if rec.message != message {
@@ -154,9 +168,7 @@ func (s *Service) Verify(ctx context.Context, address, message, signature string
 	expires := time.Now().Add(s.ttl)
 
 	s.mu.Lock()
-	// Mark nonce used.
-	rec.used = true
-	s.nonces[addr] = rec
+	delete(s.nonces, addr)
 	s.mu.Unlock()
 
 	tok, err := s.mintToken(addr, expires)

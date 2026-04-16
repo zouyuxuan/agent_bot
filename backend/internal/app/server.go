@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -41,9 +42,14 @@ func NewServer() (*Server, error) {
 	if dsn := strings.TrimSpace(os.Getenv("DATABASE_URL")); dsn != "" {
 		pl, err := store.NewPgPublishLog(context.Background(), dsn)
 		if err != nil {
-			return nil, err
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("DATABASE_REQUIRED")), "1") ||
+				strings.EqualFold(strings.TrimSpace(os.Getenv("DATABASE_REQUIRED")), "true") {
+				return nil, err
+			}
+			log.Printf("failed to init postgres publish log: %v; falling back to in-memory publish log", err)
+		} else {
+			pubs = pl
 		}
-		pubs = pl
 	}
 
 	svc := service.NewChatService(st, pubs, zerog.NewClientFromEnv(), llm.NewOpenAICompatClient())
@@ -216,7 +222,7 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 		if input.ID == "" {
 			input.ID = "bot-" + time.Now().Format("20060102150405")
 		}
-		bot := s.service.UpsertBot(domain.BotProfile{
+		bot, err := s.service.UpsertBot(domain.BotProfile{
 			ID:           input.ID,
 			Name:         input.Name,
 			Personality:  input.Personality,
@@ -225,6 +231,10 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 			ModelType:    input.ModelType,
 			SystemPrompt: input.SystemPrompt,
 		})
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusCreated, bot)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -295,11 +305,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, botID string
 		return
 	}
 	var input struct {
-		Message string                  `json:"message"`
-		LLM     *llm.Config             `json:"llm"`
-		Skills  []string                `json:"skills"`
-		X402    []domain.X402ToolResult `json:"x402"`
-		Debug   *struct {
+		Message   string                      `json:"message"`
+		LLM       *llm.Config                 `json:"llm"`
+		Skills    []string                    `json:"skills"`
+		X402      []domain.X402ToolResult     `json:"x402"`
+		Transfers []domain.TransferToolResult `json:"transfers"`
+		Debug     *struct {
 			SkillsUsed bool `json:"skillsUsed"`
 		} `json:"debug"`
 	}
@@ -307,7 +318,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, botID string
 		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
-	turn, bot, llmUsed, err := s.service.Chat(r.Context(), botID, input.Message, input.LLM, input.Skills, input.X402)
+	turn, bot, llmUsed, err := s.service.Chat(r.Context(), botID, input.Message, input.LLM, input.Skills, input.X402, input.Transfers)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -342,6 +353,9 @@ func (s *Server) buildSkillsUsed(botID string, skillIDs []string) []map[string]a
 		if looksLikeX402Skill(sk.Content) {
 			kind = "x402_fetch"
 		}
+		if looksLikeTransferSkill(sk.Content) {
+			kind = "evm_transfer"
+		}
 		out = append(out, map[string]any{
 			"id":       sk.ID,
 			"name":     sk.Name,
@@ -365,6 +379,21 @@ func looksLikeX402Skill(content string) bool {
 	}
 	t := strings.ToLower(strings.TrimSpace(v.Type))
 	return t == "x402_fetch" || t == "x402"
+}
+
+func looksLikeTransferSkill(content string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" || !strings.HasPrefix(content, "{") {
+		return false
+	}
+	var v struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(content), &v); err != nil {
+		return false
+	}
+	t := strings.ToLower(strings.TrimSpace(v.Type))
+	return t == "evm_transfer" || t == "metamask_transfer"
 }
 
 func (s *Server) handleMemories(w http.ResponseWriter, r *http.Request, botID string) {
@@ -407,8 +436,9 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, botID str
 	var input struct {
 		ZgsNodes string `json:"zgsNodes"`
 	}
-	if r.Body != nil && strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-		_ = json.NewDecoder(r.Body).Decode(&input)
+	if err := decodeOptionalJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 	nodes := parseCSV(input.ZgsNodes)
 
@@ -539,6 +569,23 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func decodeOptionalJSONBody(r *http.Request, dst any) error {
+	if r == nil || dst == nil || r.Body == nil {
+		return nil
+	}
+	if !strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+		return nil
+	}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func parseCSV(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -550,6 +597,20 @@ func parseCSV(raw string) []string {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func allowedCORSOrigins() map[string]struct{} {
+	origins := parseCSV(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if len(origins) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		if origin != "" {
+			out[origin] = struct{}{}
 		}
 	}
 	return out
@@ -568,8 +629,17 @@ func bearerToken(header string) string {
 }
 
 func withCORS(next http.Handler) http.Handler {
+	allowed := allowedCORSOrigins()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			w.Header().Add("Vary", "Origin")
+			if len(allowed) > 0 {
+				if _, ok := allowed[origin]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {

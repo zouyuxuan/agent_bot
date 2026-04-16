@@ -121,6 +121,9 @@
           <p class="hint">
             提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
           </p>
+          <p class="hint">
+            如果启用了 <code>evm_transfer</code> Skill，消息中出现“转账/支付/pay/transfer”且包含地址、金额、链ID时，会先显示转账摘要并触发 MetaMask 交易确认。
+          </p>
         </div>
       </main>
 
@@ -134,12 +137,23 @@
           <div class="section-title">Skills（从 GitHub 拉取并发布到 0G）</div>
           <div class="skills-import">
             <label>
+              本地 Skills 文件
+              <input id="skills-local-files" type="file" multiple accept=".txt,.md,.json,.yaml,.yml,text/plain,application/json" />
+            </label>
+            <button id="skills-local-upload" class="secondary" type="button">上传本地 Skills</button>
+          </div>
+          <div class="skills-import">
+            <label>
               GitHub Skills 地址
               <input id="skills-github-url" placeholder="https://github.com/owner/repo/tree/main/path/to/skills" />
             </label>
             <button id="skills-github-import-publish" class="primary" type="button">拉取并发布到 0G</button>
           </div>
           <p id="skills-summary" class="hint"></p>
+          <div class="skills-actions">
+            <button id="skills-clear-selection" class="secondary" type="button">清空已选</button>
+            <button id="skills-delete-selected" class="secondary" type="button">删除已选 Skills</button>
+          </div>
           <button id="skills-publish-bundle" class="primary" type="button">发布未上链 Skills 到 0G</button>
           <div id="skills-list" class="skills-list"></div>
         </div>

@@ -5,7 +5,7 @@ import "ai-bot-chain/backend/internal/domain"
 // Store is the persistence interface for bots, memories, and datasets.
 // Implementations must be concurrency-safe.
 type Store interface {
-	SaveBot(bot domain.BotProfile) domain.BotProfile
+	SaveBot(bot domain.BotProfile) (domain.BotProfile, error)
 	ListBots() []domain.BotProfile
 	GetBot(id string) (domain.BotProfile, error)
 

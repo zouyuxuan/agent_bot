@@ -23,6 +23,10 @@ const publishResult = document.querySelector("#publish-result");
 const zgsNodesInput = document.querySelector("#zgs-nodes");
 const skillsSummary = document.querySelector("#skills-summary");
 const skillsList = document.querySelector("#skills-list");
+const skillsLocalFiles = document.querySelector("#skills-local-files");
+const skillsLocalUploadBtn = document.querySelector("#skills-local-upload");
+const skillsClearSelectionBtn = document.querySelector("#skills-clear-selection");
+const skillsDeleteSelectedBtn = document.querySelector("#skills-delete-selected");
 const skillsGitHubURL = document.querySelector("#skills-github-url");
 const skillsGitHubImportPublishBtn = document.querySelector("#skills-github-import-publish");
 const skillsPublishBundleBtn = document.querySelector("#skills-publish-bundle");
@@ -45,11 +49,78 @@ const x402Box = document.querySelector("#x402-box");
 const x402Toggle = document.querySelector("#x402-toggle");
 const x402UseProxy = document.querySelector("#x402-use-proxy");
 
+function normalizeSkillFilename(filename) {
+  let out = String(filename || "").trim().replaceAll("\\", "/");
+  while (out.startsWith("./")) out = out.slice(2);
+  out = out.replace(/^\/+/, "");
+  return out;
+}
+
+function skillFolderFromFilename(filename) {
+  const normalized = normalizeSkillFilename(filename);
+  if (!normalized) return "(root)";
+  return normalized.includes("/") ? normalized.split("/")[0] : "(root)";
+}
+
+function syncSkillSelectionActions() {
+  const count = state.selectedSkillFolders.size;
+  if (skillsClearSelectionBtn) {
+    skillsClearSelectionBtn.disabled = count === 0;
+  }
+  if (skillsDeleteSelectedBtn) {
+    skillsDeleteSelectedBtn.disabled = count === 0;
+    skillsDeleteSelectedBtn.textContent = count > 0 ? `删除已选 Skills（${count}）` : "删除已选 Skills";
+  }
+}
+
+function pruneSelectedSkillFolders(folderSet) {
+  for (const folder of Array.from(state.selectedSkillFolders)) {
+    if (!folderSet.has(folder)) state.selectedSkillFolders.delete(folder);
+  }
+}
+
+function summarizeSkillNames(names) {
+  const list = Array.isArray(names) ? names.filter(Boolean) : [];
+  if (!list.length) return "";
+  const head = list.slice(0, 3).join("、");
+  return list.length > 3 ? `${head} 等 ${list.length} 个文件` : head;
+}
+
+function findDuplicateSkillFilenames(names) {
+  const seen = new Set();
+  const duplicates = [];
+  for (const rawName of Array.isArray(names) ? names : []) {
+    const name = normalizeSkillFilename(rawName);
+    if (!name) continue;
+    if (seen.has(name)) {
+      if (!duplicates.includes(name)) duplicates.push(name);
+      continue;
+    }
+    seen.add(name);
+  }
+  return duplicates;
+}
+
+if (skillsList) {
+  skillsList.addEventListener("change", (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const folder = target.dataset?.skillFolderCheck;
+    if (!folder) return;
+    if (target.checked) state.selectedSkillFolders.add(folder);
+    else state.selectedSkillFolders.delete(folder);
+    syncSkillSelectionActions();
+  });
+}
+
 botForm.addEventListener("submit", handleBotSubmit);
 refreshBotsBtn.addEventListener("click", loadBots);
 botList.addEventListener("change", handleBotSwitch);
 chatForm.addEventListener("submit", handleChatSubmit);
 publishBtn.addEventListener("click", publishDatasets);
+skillsLocalUploadBtn?.addEventListener("click", uploadLocalSkills);
+skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillFolders);
+skillsDeleteSelectedBtn?.addEventListener("click", deleteSelectedSkills);
 skillsGitHubImportPublishBtn?.addEventListener("click", importAndPublishSkillsFromGitHub);
 skillsPublishBundleBtn?.addEventListener("click", publishSkillsBundle);
 botModelPreset?.addEventListener("change", syncBotModelPreset);
@@ -84,13 +155,81 @@ function inferBaseUrlFromModel(model) {
   return "https://api.openai.com";
 }
 
+async function fetchJson(url, options) {
+  let resp;
+  try {
+    resp = await fetch(url, options);
+  } catch (e) {
+    throw new Error(`网络请求失败：${String(e?.message || e)}`);
+  }
+
+  let data = null;
+  try {
+    data = await resp.json();
+  } catch {
+    data = null;
+  }
+
+  if (!resp.ok) {
+    throw new Error(data?.error || resp.statusText || `HTTP ${resp.status}`);
+  }
+  return data;
+}
+
+async function fetchJsonTimed(url, options, timeoutMs) {
+  const { resp, data } = await fetchJsonWithTimeout(url, options, timeoutMs);
+  if (!resp.ok) {
+    throw new Error(data?.error || resp.statusText || `HTTP ${resp.status}`);
+  }
+  return data;
+}
+
+async function refreshSkills() {
+  if (!state.activeBotId) {
+    state.skills = [];
+    renderSkills([]);
+    return [];
+  }
+  const list = await fetchJson(`${apiBase}/api/bots/${state.activeBotId}/skills`);
+  state.skills = Array.isArray(list) ? list : [];
+  renderSkills(state.skills);
+  return state.skills;
+}
+
+async function refreshDatasets() {
+  if (!state.activeBotId) {
+    renderDatasets([]);
+    return [];
+  }
+  const datasets = await fetchJson(`${apiBase}/api/bots/${state.activeBotId}/datasets`);
+  const out = Array.isArray(datasets) ? datasets : [];
+  renderDatasets(out);
+  return out;
+}
+
 async function loadBots() {
-  const response = await fetch(`${apiBase}/api/bots`);
-  const bots = await response.json();
-  state.bots = bots;
+  let bots;
+  try {
+    bots = await fetchJson(`${apiBase}/api/bots`);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (llmStatus) llmStatus.textContent = `[错误] ${msg}`;
+    state.bots = [];
+    botList.innerHTML = "";
+    const option = document.createElement("option");
+    option.textContent = "暂无机器人";
+    option.value = "";
+    botList.append(option);
+    state.activeBotId = "";
+    renderActiveBot();
+    renderDatasets([]);
+    renderSkills([]);
+    return;
+  }
+  state.bots = Array.isArray(bots) ? bots : [];
 
   botList.innerHTML = "";
-  if (!bots.length) {
+  if (!state.bots.length) {
     const option = document.createElement("option");
     option.textContent = "暂无机器人";
     option.value = "";
@@ -101,15 +240,15 @@ async function loadBots() {
     return;
   }
 
-  bots.forEach((bot) => {
+  state.bots.forEach((bot) => {
     const option = document.createElement("option");
     option.value = bot.id;
     option.textContent = `${bot.name || bot.id} (${bot.modelType || "default"})`;
     botList.append(option);
   });
 
-  if (!state.activeBotId || !bots.some((bot) => bot.id === state.activeBotId)) {
-    state.activeBotId = bots[0].id;
+  if (!state.activeBotId || !state.bots.some((bot) => bot.id === state.activeBotId)) {
+    state.activeBotId = state.bots[0].id;
   }
   botList.value = state.activeBotId;
   await refreshActiveBotViews();
@@ -120,12 +259,18 @@ async function handleBotSubmit(event) {
   syncBotModelPreset();
   const formData = new FormData(botForm);
   const payload = Object.fromEntries(formData.entries());
-  const response = await fetch(`${apiBase}/api/bots`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const bot = await response.json();
+  let bot;
+  try {
+    bot = await fetchJson(`${apiBase}/api/bots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (llmStatus) llmStatus.textContent = `[错误] ${msg}`;
+    return;
+  }
   state.activeBotId = bot.id;
   botForm.reset();
   await loadBots();
@@ -144,24 +289,23 @@ async function refreshActiveBotViews() {
     return;
   }
 
-  const [botResponse, memoriesResponse, datasetsResponse, skillsResponse] = await Promise.all([
-    fetch(`${apiBase}/api/bots/${state.activeBotId}`),
-    fetch(`${apiBase}/api/bots/${state.activeBotId}/memories`),
-    fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets`),
-    fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`),
-  ]);
-
-  const bot = await botResponse.json();
-  const memories = await memoriesResponse.json();
-  const datasets = await datasetsResponse.json();
-  const skills = await skillsResponse.json();
+  let bot;
+  let memories;
+  try {
+    [bot, memories] = await Promise.all([
+      fetchJson(`${apiBase}/api/bots/${state.activeBotId}`),
+      fetchJson(`${apiBase}/api/bots/${state.activeBotId}/memories`),
+    ]);
+    await Promise.all([refreshDatasets(), refreshSkills()]);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (llmStatus) llmStatus.textContent = `[错误] ${msg}`;
+    return;
+  }
 
   state.activeBot = bot;
   renderActiveBot(bot);
-  renderMemories(memories);
-  renderDatasets(datasets);
-  state.skills = Array.isArray(skills) ? skills : [];
-  renderSkills(state.skills);
+  renderMemories(Array.isArray(memories) ? memories : []);
 }
 
 function renderActiveBot(bot = null) {
@@ -210,17 +354,15 @@ function renderSkills(skills) {
 
   const folderMap = new Map();
   for (const sk of raw) {
-    const fn = String(sk.filename || "").trim();
-    const folder = fn.includes("/") ? fn.split("/")[0] : "(root)";
+    const folder = skillFolderFromFilename(sk.filename);
     if (!folderMap.has(folder)) folderMap.set(folder, []);
     folderMap.get(folder).push(sk);
   }
 
   // Clean selection if folders disappear.
   const folderSet = new Set(Array.from(folderMap.keys()));
-  for (const f of Array.from(state.selectedSkillFolders)) {
-    if (!folderSet.has(f)) state.selectedSkillFolders.delete(f);
-  }
+  pruneSelectedSkillFolders(folderSet);
+  syncSkillSelectionActions();
 
   const folders = Array.from(folderMap.entries())
     .map(([folder, items]) => {
@@ -239,7 +381,7 @@ function renderSkills(skills) {
       .slice()
       .sort((a, b) => String(a.filename || "").localeCompare(String(b.filename || "")))
       .map((s) => {
-        const fn = String(s.filename || "").trim();
+        const fn = normalizeSkillFilename(s.filename);
         // show file name without the folder prefix
         if (fn.includes("/")) return fn.split("/").slice(1).join("/");
         return fn || (s.name || s.id);
@@ -261,15 +403,6 @@ function renderSkills(skills) {
     skillsList.append(div);
   });
 
-  skillsList.querySelectorAll("input[data-skill-folder-check]").forEach((el) => {
-    el.addEventListener("change", (e) => {
-      const folder = e.target?.dataset?.skillFolderCheck;
-      if (!folder) return;
-      if (e.target.checked) state.selectedSkillFolders.add(folder);
-      else state.selectedSkillFolders.delete(folder);
-    });
-  });
-
   // Folder-level publishing button removed; publish uses bundle publish.
 }
 
@@ -288,9 +421,9 @@ async function importSkillsFromGitHub() {
   }
   const authToken = localStorage.getItem("authToken") || "";
   if (skillsSummary) skillsSummary.textContent = "正在从 GitHub 拉取并导入...";
-  let resp, data;
+  let data;
   try {
-    ({ resp, data } = await fetchJsonWithTimeout(
+    data = await fetchJsonTimed(
       `${apiBase}/api/bots/${state.activeBotId}/skills/import_github`,
       {
         method: "POST",
@@ -301,20 +434,17 @@ async function importSkillsFromGitHub() {
         body: JSON.stringify({ url }),
       },
       60000,
-    ));
+    );
   } catch (e) {
     if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
     return;
   }
-  if (!resp.ok) {
-    if (skillsSummary) skillsSummary.textContent = `[错误] ${data?.error || resp.statusText}`;
-    return;
-  }
   if (skillsSummary) skillsSummary.textContent = `已从 GitHub 导入 ${Number(data?.count || 0)} 个 Skills。`;
-  const listResp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`);
-  const list = await listResp.json();
-  state.skills = Array.isArray(list) ? list : [];
-  renderSkills(state.skills);
+  try {
+    await refreshSkills();
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+  }
 }
 
 async function importAndPublishSkillsFromGitHub() {
@@ -419,10 +549,11 @@ async function publishSkillsBundle() {
         );
         if (resp.ok && data?.status === "success") {
           if (skillsSummary) skillsSummary.textContent = `链上已成功：${data.txHash}（可查：${data.explorerTxUrl || ""}）。Skills 数据会在后台同步到存储节点。`;
-          const listResp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`);
-          const list = await listResp.json();
-          state.skills = Array.isArray(list) ? list : [];
-          renderSkills(state.skills);
+          try {
+            await refreshSkills();
+          } catch (e) {
+            if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+          }
           return;
         }
       } catch {}
@@ -436,10 +567,11 @@ async function publishSkillsBundle() {
   }
 
   if (skillsSummary) skillsSummary.textContent = `Skills Bundle 已发布：root=${result.rootHash || ""} tx=${result.txHash || ""}`;
-  const listResp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`);
-  const list = await listResp.json();
-  state.skills = Array.isArray(list) ? list : [];
-  renderSkills(state.skills);
+  try {
+    await refreshSkills();
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+  }
 }
 
 async function handleChatSubmit(event) {
@@ -480,7 +612,6 @@ async function handleChatSubmit(event) {
         }
       : null;
 
-  let response;
   let data;
   try {
     // Expand selected folders into skill IDs.
@@ -494,11 +625,15 @@ async function handleChatSubmit(event) {
       }
     }
 
+    // Frontend-executed transfer tools run first; if a transfer is attempted in
+    // this turn, skip x402 tools to avoid dual wallet flows in one message.
+    const transferResults = await runTransferSkillsInBrowser(enabledSkillIDs, message);
+
     // Frontend-executed x402 tools: run before sending chat so the backend can
     // include the results in the LLM prompt.
-    const x402Results = await runX402SkillsInBrowser(enabledSkillIDs, message);
+    const x402Results = transferResults.length ? [] : await runX402SkillsInBrowser(enabledSkillIDs, message);
 
-    response = await fetch(`${apiBase}/api/bots/${state.activeBotId}/chat`, {
+    data = await fetchJson(`${apiBase}/api/bots/${state.activeBotId}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -506,17 +641,12 @@ async function handleChatSubmit(event) {
         llm,
         skills: enabledSkillIDs,
         x402: x402Results,
+        transfers: transferResults,
         debug: debugSkills?.checked ? { skillsUsed: true } : undefined,
       }),
     });
-    data = await response.json();
   } catch (error) {
     resolveThinking(thinking, `[网络错误] ${String(error)}`);
-    return;
-  }
-
-  if (!response.ok) {
-    resolveThinking(thinking, `[错误] ${data?.error || response.statusText}`);
     return;
   }
 
@@ -545,9 +675,11 @@ async function handleChatSubmit(event) {
     }
   }
 
-  const datasetsResponse = await fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets`);
-  const datasets = await datasetsResponse.json();
-  renderDatasets(datasets);
+  try {
+    await refreshDatasets();
+  } catch (e) {
+    if (llmStatus) llmStatus.textContent = `[错误] ${String(e?.message || e)}`;
+  }
 }
 
 function parseX402Command(text) {
@@ -830,9 +962,11 @@ async function publishDatasets() {
       const ok = await tryResolveTxSuccessFromChain(txHash);
       if (ok) {
         // Refresh dataset list after confirmed success.
-        const datasetsResponse = await fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets`);
-        const datasets = await datasetsResponse.json();
-        renderDatasets(datasets);
+        try {
+          await refreshDatasets();
+        } catch (e) {
+          publishResult.textContent = `[错误] ${String(e?.message || e)}`;
+        }
         return;
       }
       publishResult.textContent = `[错误] 上传到 0G 超时或失败：${msg}（可用 tx 在浏览器查看确认）`;
@@ -850,9 +984,11 @@ async function publishDatasets() {
   const locPart = (result.fileLocations || []).length ? `；nodes: ${(result.fileLocations || []).join(", ")}` : "";
   publishResult.textContent = `已发布 ${result.sampleCount} 条；root: ${result.rootHash}；${txPart}${locPart}`;
 
-  const datasetsResponse = await fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets`);
-  const datasets = await datasetsResponse.json();
-  renderDatasets(datasets);
+  try {
+    await refreshDatasets();
+  } catch (e) {
+    publishResult.textContent = `[错误] ${String(e?.message || e)}`;
+  }
 }
 
 async function tryResolveTxSuccessFromChain(txHash) {
@@ -897,14 +1033,33 @@ async function uploadSkillsFolder() {
     alert("请先选择机器人");
     return;
   }
-  const files = Array.from(skillsFolder?.files || []);
+  const files = Array.from(skillsLocalFiles?.files || []);
   if (!files.length) {
-    alert("请选择一个 skills 文件夹");
+    alert("请选择本地 skills 文件");
     return;
   }
+
+  const uploadNames = files.map((f) => normalizeSkillFilename(f.webkitRelativePath || f.name)).filter(Boolean);
+  const duplicatesInUpload = findDuplicateSkillFilenames(uploadNames);
+  if (duplicatesInUpload.length) {
+    const msg = `检测到重复的 Skills 文件：${summarizeSkillNames(duplicatesInUpload)}`;
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${msg}`;
+    alert(msg);
+    return;
+  }
+
+  const existingNames = new Set((state.skills || []).map((sk) => normalizeSkillFilename(sk.filename)).filter(Boolean));
+  const conflicts = uploadNames.filter((name, index) => existingNames.has(name) && uploadNames.indexOf(name) === index);
+  if (conflicts.length) {
+    const msg = `以下 Skills 文件已存在，请勿重复上传：${summarizeSkillNames(conflicts)}`;
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${msg}`;
+    alert(msg);
+    return;
+  }
+
   const fd = new FormData();
   for (const f of files) {
-    const rel = f.webkitRelativePath || f.name;
+    const rel = normalizeSkillFilename(f.webkitRelativePath || f.name);
     fd.append("files", f, rel);
   }
 
@@ -922,12 +1077,78 @@ async function uploadSkillsFolder() {
     return;
   }
 
-  if (skillsFolder) skillsFolder.value = "";
+  if (skillsLocalFiles) skillsLocalFiles.value = "";
 
-  const listResp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`);
-  const list = await listResp.json();
-  state.skills = Array.isArray(list) ? list : [];
+  try {
+    await refreshSkills();
+    if (skillsSummary) skillsSummary.textContent = `已上传 ${Number(data?.count || files.length)} 个本地 Skills。勾选文件夹后可在对话中启用。`;
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+async function uploadLocalSkills() {
+  await uploadSkillsFolder();
+}
+
+function clearSelectedSkillFolders() {
+  state.selectedSkillFolders.clear();
+  syncSkillSelectionActions();
   renderSkills(state.skills);
+}
+
+async function deleteSelectedSkills() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  const selectedFolders = new Set(Array.from(state.selectedSkillFolders || []));
+  if (!selectedFolders.size) {
+    alert("请先勾选要删除的 Skills 文件夹");
+    return;
+  }
+
+  const skillIDs = (state.skills || [])
+    .filter((sk) => {
+      const folder = skillFolderFromFilename(sk.filename);
+      return selectedFolders.has(folder);
+    })
+    .map((sk) => sk.id)
+    .filter(Boolean);
+
+  if (!skillIDs.length) {
+    clearSelectedSkillFolders();
+    return;
+  }
+
+  if (!window.confirm(`将删除已选的 ${selectedFolders.size} 个文件夹中的 ${skillIDs.length} 个 Skills。此操作不可撤销，是否继续？`)) {
+    return;
+  }
+
+  if (skillsSummary) skillsSummary.textContent = "正在删除已选 Skills...";
+  let data;
+  try {
+    data = await fetchJsonTimed(
+      `${apiBase}/api/bots/${state.activeBotId}/skills/delete`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillIds: skillIDs }),
+      },
+      20000,
+    );
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+
+  state.selectedSkillFolders.clear();
+  try {
+    await refreshSkills();
+    if (skillsSummary) skillsSummary.textContent = `已删除 ${Number(data?.deleted || 0)} 个 Skills。`;
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+  }
 }
 
 async function publishSkill(skillID) {
@@ -1031,35 +1252,50 @@ async function publishSkill(skillID) {
 
   if (skillsSummary) skillsSummary.textContent = `Skill 已发布：root=${result.rootHash || ""} tx=${result.txHash || ""}`;
 
-  const listResp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/skills`);
-  const list = await listResp.json();
-  state.skills = Array.isArray(list) ? list : [];
-  renderSkills(state.skills);
+  try {
+    await refreshSkills();
+  } catch (e) {
+    if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+function shouldAutoScroll(container, threshold = 48) {
+  if (!container) return true;
+  return container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
 }
 
 function appendBubble(role, content) {
+  const stickToBottom = shouldAutoScroll(chatStream);
   const div = document.createElement("div");
   div.className = `bubble ${role}`;
   div.textContent = content;
   chatStream.append(div);
-  chatStream.scrollTop = chatStream.scrollHeight;
+  if (stickToBottom) {
+    chatStream.scrollTop = chatStream.scrollHeight;
+  }
   return div;
 }
 
 function appendThinkingBubble() {
+  const stickToBottom = shouldAutoScroll(chatStream);
   const div = document.createElement("div");
   div.className = "bubble assistant thinking";
   div.textContent = "正在思考...";
   chatStream.append(div);
-  chatStream.scrollTop = chatStream.scrollHeight;
+  if (stickToBottom) {
+    chatStream.scrollTop = chatStream.scrollHeight;
+  }
   return div;
 }
 
 function resolveThinking(div, text) {
   if (!div) return;
+  const stickToBottom = shouldAutoScroll(chatStream);
   div.classList.remove("thinking");
   div.textContent = text;
-  chatStream.scrollTop = chatStream.scrollHeight;
+  if (stickToBottom) {
+    chatStream.scrollTop = chatStream.scrollHeight;
+  }
 }
 
 function escapeHtml(str) {
@@ -1128,6 +1364,362 @@ function truncateTextClient(s, max) {
   return s.slice(0, max) + "...(truncated)";
 }
 
+function looksLikeTransferSkillContent(content) {
+  const raw = String(content || "").trim();
+  if (!raw || !raw.startsWith("{")) return false;
+  try {
+    const v = JSON.parse(raw);
+    const t = String(v?.type || "").trim().toLowerCase();
+    return t === "evm_transfer" || t === "metamask_transfer";
+  } catch {
+    return false;
+  }
+}
+
+function parseTransferSkillSpec(content) {
+  const raw = String(content || "").trim();
+  const v = JSON.parse(raw);
+  const t = String(v?.type || "").trim().toLowerCase();
+  if (t !== "evm_transfer" && t !== "metamask_transfer") return null;
+
+  const triggerKeywords = Array.isArray(v?.triggerKeywords)
+    ? v.triggerKeywords
+        .map((k) => String(k || "").trim().toLowerCase())
+        .filter(Boolean)
+    : ["转账", "支付", "付款", "pay", "transfer"];
+
+  const chainId = Number(v?.chainId);
+  const token = String(v?.token || "native").trim();
+  const tokenAddress = String(v?.tokenAddress || "").trim();
+  const decimalsRaw = v?.decimals;
+  const decimals = Number.isInteger(Number(decimalsRaw)) ? Number(decimalsRaw) : null;
+
+  return {
+    triggerKeywords,
+    chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : null,
+    token,
+    tokenAddress,
+    decimals,
+  };
+}
+
+function hasTransferKeyword(message, keywords) {
+  const text = String(message || "").toLowerCase();
+  if (!text) return false;
+  const list = Array.isArray(keywords) && keywords.length ? keywords : ["转账", "支付", "付款", "pay", "transfer"];
+  return list.some((k) => k && text.includes(String(k).toLowerCase()));
+}
+
+function extractTransferIntent(message) {
+  const text = String(message || "");
+  const lower = text.toLowerCase();
+
+  const toMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  const to = toMatch ? toMatch[0] : "";
+
+  // 支持: chain 8453 / 链8453 / chainId=8453
+  let chainId = null;
+  const chainMatch = lower.match(/(?:chain\s*id|chainid|chain|链)\s*[:=：]?\s*(\d{1,10})/i);
+  if (chainMatch) {
+    const n = Number(chainMatch[1]);
+    if (Number.isFinite(n) && n > 0) chainId = n;
+  }
+
+  // 支持: 0.01 ETH / 10 usdc / amount 1.23 / 金额 1.23
+  let amount = "";
+  let token = "";
+  const amountTokenMatch = text.match(/(\d+(?:\.\d+)?)\s*(0g|og|eth|usdc|usdt|dai|matic|bnb)\b/i);
+  if (amountTokenMatch) {
+    amount = amountTokenMatch[1];
+    token = amountTokenMatch[2].toLowerCase();
+  } else {
+    const amountMatch = text.match(/(?:amount|金额|转账|支付|付款)\s*[:=：]?\s*(\d+(?:\.\d+)?)/i);
+    if (amountMatch) amount = amountMatch[1];
+  }
+
+  const tokenAddressMatch = text.match(/token\s*[:=：]?\s*(0x[a-fA-F0-9]{40})/i);
+  const tokenAddress = tokenAddressMatch ? tokenAddressMatch[1] : "";
+
+  return { to, amount, token, chainId, tokenAddress };
+}
+
+function normalizeAddress(addr) {
+  const s = String(addr || "").trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(s)) return "";
+  if (/^0x0{40}$/i.test(s)) return "";
+  return s;
+}
+
+function isPositiveDecimal(value) {
+  const s = String(value || "").trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) return false;
+  return Number(s) > 0;
+}
+
+function decimalToBaseUnits(value, decimals) {
+  const s = String(value || "").trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error("金额格式不正确");
+  const d = Number(decimals);
+  if (!Number.isInteger(d) || d < 0 || d > 36) throw new Error("decimals 不合法");
+
+  const [whole, fracRaw = ""] = s.split(".");
+  if (fracRaw.length > d) throw new Error(`金额精度超过 ${d} 位`);
+  const frac = (fracRaw + "0".repeat(d)).slice(0, d);
+  const merged = `${whole}${frac}`.replace(/^0+(\d)/, "$1");
+  return merged || "0";
+}
+
+function erc20TransferData(to, amountBaseUnits) {
+  const methodId = "a9059cbb"; // transfer(address,uint256)
+  const addr = normalizeAddress(to);
+  if (!addr) throw new Error("收款地址无效");
+  const addrNo0x = addr.slice(2).toLowerCase().padStart(64, "0");
+  const amountHex = BigInt(String(amountBaseUnits)).toString(16).padStart(64, "0");
+  return `0x${methodId}${addrNo0x}${amountHex}`;
+}
+
+function isAllowedTransferChain(chainId) {
+  const n = Number(chainId);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  return !!knownChainPreset(n);
+}
+
+function normalizeTransferTokenName(token) {
+  const low = String(token || "").trim().toLowerCase();
+  if (low === "0g" || low === "og") return "0g";
+  if (low === "eth") return "native";
+  return low;
+}
+
+async function ensureTransferChain(chainIdDec) {
+  const n = Number(chainIdDec);
+  if (!Number.isFinite(n) || n <= 0) throw new Error("链ID不合法");
+  if (!isAllowedTransferChain(n)) throw new Error(`当前仅支持白名单链：${n}`);
+
+  await ensureEvmChainForSigning(n);
+  const cur = await window.ethereum.request({ method: "eth_chainId" });
+  const wantHex = "0x" + n.toString(16);
+  if (String(cur).toLowerCase() !== wantHex.toLowerCase()) {
+    throw new Error(`当前钱包链为 ${cur}，目标链为 ${wantHex}，请先切换后重试`);
+  }
+}
+
+async function runTransferSkillsInBrowser(enabledSkillIDs, userMessage) {
+  const ids = Array.isArray(enabledSkillIDs) ? enabledSkillIDs : [];
+  if (!ids.length) return [];
+
+  const candidates = [];
+  for (const id of ids) {
+    const sk = (state.skills || []).find((x) => x?.id === id);
+    if (!sk) continue;
+    if (!looksLikeTransferSkillContent(sk.content)) continue;
+    let spec = null;
+    try {
+      spec = parseTransferSkillSpec(sk.content);
+    } catch {
+      spec = null;
+    }
+    if (!spec) continue;
+    candidates.push({ sk, spec });
+  }
+  if (!candidates.length) return [];
+
+  // 单条消息最多执行一个 transfer skill，避免一次输入触发多笔转账。
+  const matched = candidates.find(({ spec }) => hasTransferKeyword(userMessage, spec.triggerKeywords));
+  if (!matched) return [];
+
+  const { sk, spec } = matched;
+  const startedAt = isoNow();
+  const intent = extractTransferIntent(userMessage);
+
+  const to = normalizeAddress(intent.to);
+  const normalizedTokenName = normalizeTransferTokenName(intent.token || spec.token || "native");
+  const chainId = intent.chainId || spec.chainId || (normalizedTokenName === "0g" ? 16602 : null);
+  const tokenAddr = normalizeAddress(intent.tokenAddress || spec.tokenAddress || "");
+  const tokenName = normalizedTokenName;
+  const isNative = !tokenAddr && (tokenName === "" || tokenName === "native" || tokenName === "eth" || tokenName === "0g");
+  const decimals = Number.isInteger(spec.decimals) ? spec.decimals : isNative ? 18 : 18;
+
+  if (!hasTransferKeyword(userMessage, spec.triggerKeywords)) {
+    return [];
+  }
+
+  if (!to || !isPositiveDecimal(intent.amount) || !chainId) {
+    const missing = [];
+    if (!to) missing.push("收款地址(0x...) ");
+    if (!isPositiveDecimal(intent.amount)) missing.push("金额(>0)");
+    if (!chainId) missing.push("链ID(chain 16602)");
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId) || 0,
+        to: to || intent.to || "",
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount || ""),
+        amountWei: "",
+        ok: false,
+        error: `转账参数不完整：缺少 ${missing.join("、")}`,
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+
+  const ok = await ensureWalletAuthorized();
+  if (!ok) {
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei: "",
+        ok: false,
+        error: "未完成钱包授权",
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+
+  try {
+    await ensureTransferChain(Number(chainId));
+  } catch (e) {
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei: "",
+        ok: false,
+        error: `切换链失败：${String(e?.message || e)}`,
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+
+  let amountWei = "";
+  try {
+    amountWei = decimalToBaseUnits(intent.amount, decimals);
+  } catch (e) {
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei: "",
+        ok: false,
+        error: String(e?.message || e),
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+  if (amountWei === "0") {
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei,
+        ok: false,
+        error: "金额必须大于 0",
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+
+  const from = localStorage.getItem("walletAddress") || "";
+  if (!from) {
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei,
+        ok: false,
+        error: "未连接钱包",
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+
+  try {
+    let txHash = "";
+    if (isNative) {
+      txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [{ from, to, value: `0x${BigInt(amountWei).toString(16)}` }],
+      });
+    } else {
+      txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from,
+            to: tokenAddr,
+            data: erc20TransferData(to, amountWei),
+            value: "0x0",
+          },
+        ],
+      });
+    }
+
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei,
+        txHash: String(txHash || ""),
+        ok: true,
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  } catch (e) {
+    const code = Number(e?.code ?? e?.data?.originalError?.code);
+    let msg = String(e?.message || e);
+    if (code === 4001) msg = "用户取消签名/交易";
+    return [
+      {
+        skillId: sk.id,
+        type: isNative ? "native" : "erc20",
+        chainId: Number(chainId),
+        to,
+        token: isNative ? "native" : tokenAddr,
+        amount: String(intent.amount),
+        amountWei,
+        ok: false,
+        error: msg,
+        startedAt,
+        endedAt: isoNow(),
+      },
+    ];
+  }
+}
+
 async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
   const ids = Array.isArray(enabledSkillIDs) ? enabledSkillIDs : [];
   if (!ids.length) return [];
@@ -1154,16 +1746,14 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
 
   const fetchWithPayment = await getX402FetchWithMetaMask(from, { viaProxy: true });
 
-  const results = [];
-  for (let i = 0; i < toRun.length; i++) {
-    const sk = toRun[i];
+  async function runOne(sk, index) {
     const startedAt = isoNow();
     const filename = String(sk.filename || sk.name || sk.id || "").trim();
     let spec = null;
     try {
       spec = parseX402Spec(sk.content);
     } catch (e) {
-      results.push({
+      return {
         skillId: sk.id,
         filename,
         ok: false,
@@ -1171,11 +1761,10 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
         error: `invalid x402 skill json: ${String(e?.message || e)}`,
         startedAt,
         endedAt: isoNow(),
-      });
-      continue;
+      };
     }
     if (!spec) {
-      results.push({
+      return {
         skillId: sk.id,
         filename,
         ok: false,
@@ -1183,8 +1772,7 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
         error: "invalid x402 skill spec",
         startedAt,
         endedAt: isoNow(),
-      });
-      continue;
+      };
     }
 
     const url = spec.url.replaceAll("{input}", encodeURIComponent(String(userMessage || "")));
@@ -1192,7 +1780,7 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
     const headers = spec.headers || {};
 
     if (llmStatus) {
-      llmStatus.textContent = `x402 执行中（${i + 1}/${toRun.length}）：${filename}`;
+      llmStatus.textContent = `x402 执行中（${index + 1}/${toRun.length}）：${filename}`;
     }
 
     try {
@@ -1211,7 +1799,7 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
         clearTimeout(t);
       }
       const text = await resp.text().catch(() => "");
-      results.push({
+      return {
         skillId: sk.id,
         filename,
         url,
@@ -1226,9 +1814,9 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
         body: truncateTextClient(text, 12000),
         startedAt,
         endedAt: isoNow(),
-      });
+      };
     } catch (e) {
-      results.push({
+      return {
         skillId: sk.id,
         filename,
         url,
@@ -1238,11 +1826,27 @@ async function runX402SkillsInBrowser(enabledSkillIDs, userMessage) {
         error: String(e?.message || e),
         startedAt,
         endedAt: isoNow(),
-      });
+      };
     }
   }
+
+  const results = new Array(toRun.length);
+  const concurrency = Math.min(2, toRun.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (true) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= toRun.length) return;
+      results[idx] = await runOne(toRun[idx], idx);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
   return results;
 }
+
 
 async function fetchJsonWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -1768,6 +2372,15 @@ async function ensureEvmChainForSigning(chainIdDec) {
 function knownChainPreset(chainIdDec) {
   // Minimal presets to make x402 paid APIs usable out of the box.
   // If the seller uses a different chain, user can add/switch manually.
+  if (chainIdDec === 16602) {
+    return {
+      chainId: "0x40da",
+      chainName: "0GAI",
+      nativeCurrency: { name: "OG", symbol: "OG", decimals: 18 },
+      rpcUrls: ["https://evmrpc-testnet.0g.ai"],
+      blockExplorerUrls: ["https://chainscan-galileo.0g.ai"],
+    };
+  }
   if (chainIdDec === 5042002) {
     return {
       chainId: "0x4cef52",

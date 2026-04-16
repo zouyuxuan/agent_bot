@@ -14,6 +14,22 @@ import (
 	"ai-bot-chain/backend/internal/domain"
 )
 
+func normalizeSkillUploadFilename(filename string) string {
+	out := strings.TrimSpace(filename)
+	if out == "" {
+		return ""
+	}
+	out = filepath.ToSlash(filepath.Clean(out))
+	for strings.HasPrefix(out, "./") {
+		out = strings.TrimPrefix(out, "./")
+	}
+	out = strings.TrimLeft(out, "/")
+	if out == "." {
+		return ""
+	}
+	return out
+}
+
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request, botID string, rest []string) {
 	// /api/bots/{botID}/skills
 	if len(rest) == 0 {
@@ -39,6 +55,16 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request, botID stri
 			return
 		}
 		s.handleSkillUpload(w, r, botID)
+		return
+	}
+
+	// /api/bots/{botID}/skills/delete
+	if rest[0] == "delete" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleSkillsDelete(w, r, botID)
 		return
 	}
 
@@ -107,8 +133,9 @@ func (s *Server) handleSkillsBundlePublishPrepare(w http.ResponseWriter, r *http
 		ZgsNodes string   `json:"zgsNodes"`
 		SkillIDs []string `json:"skillIds"`
 	}
-	if r.Body != nil && strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-		_ = json.NewDecoder(r.Body).Decode(&input)
+	if err := decodeOptionalJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 	nodes := parseCSV(input.ZgsNodes)
 
@@ -121,14 +148,14 @@ func (s *Server) handleSkillsBundlePublishPrepare(w http.ResponseWriter, r *http
 	}
 	// include count so UI can confirm what's being published
 	writeJSON(w, http.StatusOK, map[string]any{
-		"publishId": out.PublishID,
+		"publishId":  out.PublishID,
 		"chainIdHex": out.ChainIDHex,
 		"chainIdDec": out.ChainIDDec,
-		"from": out.From,
-		"to": out.To,
-		"data": out.Data,
-		"value": out.Value,
-		"rootHash": out.RootHash,
+		"from":       out.From,
+		"to":         out.To,
+		"data":       out.Data,
+		"value":      out.Value,
+		"rootHash":   out.RootHash,
 		"skillCount": count,
 	})
 }
@@ -188,14 +215,29 @@ func (s *Server) handleSkillUpload(w http.ResponseWriter, r *http.Request, botID
 		return
 	}
 
+	existingSkills, err := s.service.ListSkills(botID)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	existingFilenames := make(map[string]struct{}, len(existingSkills))
+	for _, sk := range existingSkills {
+		name := normalizeSkillUploadFilename(sk.Filename)
+		if name == "" {
+			continue
+		}
+		existingFilenames[name] = struct{}{}
+	}
+
 	created := make([]domain.Skill, 0, len(headers))
-	seen := map[string]int{}
+	seenNames := map[string]int{}
+	seenFilenames := map[string]struct{}{}
 
 	for _, hdr := range headers {
 		if hdr == nil {
 			continue
 		}
-		filename := strings.TrimSpace(hdr.Filename)
+		filename := normalizeSkillUploadFilename(hdr.Filename)
 		if filename == "" {
 			continue
 		}
@@ -213,6 +255,15 @@ func (s *Server) handleSkillUpload(w http.ResponseWriter, r *http.Request, botID
 			writeError(w, http.StatusBadRequest, "unsupported skill file type: "+filename+" (use .txt/.md/.json/.yml)")
 			return
 		}
+		if _, ok := seenFilenames[filename]; ok {
+			writeError(w, http.StatusBadRequest, "上传中包含重复的 Skills 文件: "+filename)
+			return
+		}
+		if _, ok := existingFilenames[filename]; ok {
+			writeError(w, http.StatusBadRequest, "Skills 文件已存在: "+filename)
+			return
+		}
+		seenFilenames[filename] = struct{}{}
 
 		f, err := hdr.Open()
 		if err != nil {
@@ -239,11 +290,11 @@ func (s *Server) handleSkillUpload(w http.ResponseWriter, r *http.Request, botID
 		if name == "" {
 			name = "skill-" + time.Now().Format("20060102150405")
 		}
-		if n := seen[name]; n > 0 {
-			seen[name] = n + 1
+		if n := seenNames[name]; n > 0 {
+			seenNames[name] = n + 1
 			name = name + "-" + fmt.Sprintf("%d", n+1)
 		} else {
-			seen[name] = 1
+			seenNames[name] = 1
 		}
 
 		skill, err := s.service.CreateSkill(botID, domain.Skill{
@@ -266,6 +317,24 @@ func (s *Server) handleSkillUpload(w http.ResponseWriter, r *http.Request, botID
 	})
 }
 
+func (s *Server) handleSkillsDelete(w http.ResponseWriter, r *http.Request, botID string) {
+	var input struct {
+		SkillIDs []string `json:"skillIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	deleted, err := s.service.DeleteSkills(botID, input.SkillIDs)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"deleted": deleted,
+	})
+}
+
 func (s *Server) handleSkillPublishPrepare(w http.ResponseWriter, r *http.Request, botID, skillID string) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -278,8 +347,9 @@ func (s *Server) handleSkillPublishPrepare(w http.ResponseWriter, r *http.Reques
 	var input struct {
 		ZgsNodes string `json:"zgsNodes"`
 	}
-	if r.Body != nil && strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-		_ = json.NewDecoder(r.Body).Decode(&input)
+	if err := decodeOptionalJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 	nodes := parseCSV(input.ZgsNodes)
 

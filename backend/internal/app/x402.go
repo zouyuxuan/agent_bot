@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,21 +29,36 @@ func (s *Server) handleX402Proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		URL     string            `json:"url"`
-		Method  string            `json:"method"`
-		Headers map[string]string `json:"headers"`
-		Body    any               `json:"body"`
-		TimeoutMS int             `json:"timeoutMs"`
+		URL       string            `json:"url"`
+		Method    string            `json:"method"`
+		Headers   map[string]string `json:"headers"`
+		Body      any               `json:"body"`
+		TimeoutMS int               `json:"timeoutMs"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	u := strings.TrimSpace(input.URL)
-	if u == "" || (!strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://")) {
+
+	target := strings.TrimSpace(input.URL)
+	if target == "" {
+		writeError(w, http.StatusBadRequest, "missing url")
+		return
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
 		writeError(w, http.StatusBadRequest, "url must be http(s)")
 		return
 	}
+	if err := validatePublicURL(r.Context(), parsed); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	method := strings.ToUpper(strings.TrimSpace(input.Method))
 	if method == "" {
 		method = http.MethodGet
@@ -58,27 +74,24 @@ func (s *Server) handleX402Proxy(w http.ResponseWriter, r *http.Request) {
 		bodyReader = bytes.NewReader(raw)
 	}
 
-	ctx := r.Context()
+	timeout := 45 * time.Second
 	if input.TimeoutMS > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
-		defer cancel()
-	} else {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
-		defer cancel()
+		timeout = time.Duration(input.TimeoutMS) * time.Millisecond
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, u, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, target, bodyReader)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to build request")
 		return
 	}
 	for k, v := range input.Headers {
-		if strings.TrimSpace(k) == "" {
+		key := http.CanonicalHeaderKey(strings.TrimSpace(k))
+		if key == "" || isBlockedProxyHeader(key) {
 			continue
 		}
-		req.Header.Set(k, v)
+		req.Header.Set(key, v)
 	}
 	if input.Body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -90,7 +103,7 @@ func (s *Server) handleX402Proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := client.DoContext(ctx, req)
+	resp, err := client.DoContextNoRedirect(ctx, req, timeout)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -116,4 +129,5 @@ func (s *Server) handleX402Proxy(w http.ResponseWriter, r *http.Request) {
 		"body":    string(b),
 	})
 }
+
 

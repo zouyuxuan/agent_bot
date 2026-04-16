@@ -39,7 +39,7 @@ func NewChatService(st store.Store, pubs store.PublishLog, client *zerog.Client,
 	}
 }
 
-func (s *ChatService) UpsertBot(profile domain.BotProfile) domain.BotProfile {
+func (s *ChatService) UpsertBot(profile domain.BotProfile) (domain.BotProfile, error) {
 	now := time.Now()
 	if profile.CreatedAt.IsZero() {
 		profile.CreatedAt = now
@@ -56,7 +56,7 @@ func (s *ChatService) GetBot(id string) (domain.BotProfile, error) {
 	return s.store.GetBot(id)
 }
 
-func (s *ChatService) Chat(ctx context.Context, botID, message string, llmCfg *llm.Config, skillIDs []string, x402Results []domain.X402ToolResult) (domain.ConversationTurn, domain.BotProfile, bool, error) {
+func (s *ChatService) Chat(ctx context.Context, botID, message string, llmCfg *llm.Config, skillIDs []string, x402Results []domain.X402ToolResult, transferResults []domain.TransferToolResult) (domain.ConversationTurn, domain.BotProfile, bool, error) {
 	bot, err := s.store.GetBot(botID)
 	if err != nil {
 		return domain.ConversationTurn{}, domain.BotProfile{}, false, err
@@ -69,7 +69,8 @@ func (s *ChatService) Chat(ctx context.Context, botID, message string, llmCfg *l
 
 	now := time.Now()
 	x402Ctx := buildX402ContextFromFrontend(x402Results)
-	reply, llmUsed := s.generateReply(ctx, bot, message, llmCfg, skillCtx, x402Ctx)
+	transferCtx := buildTransferContextFromFrontend(transferResults)
+	reply, llmUsed := s.generateReply(ctx, bot, message, llmCfg, skillCtx, x402Ctx, transferCtx)
 	turn := domain.ConversationTurn{
 		UserMessage: domain.ChatMessage{
 			Role:      "user",
@@ -89,7 +90,10 @@ func (s *ChatService) Chat(ctx context.Context, botID, message string, llmCfg *l
 
 	bot.GrowthScore += 1
 	bot.UpdatedAt = now
-	bot = s.store.SaveBot(bot)
+	bot, err = s.store.SaveBot(bot)
+	if err != nil {
+		return domain.ConversationTurn{}, domain.BotProfile{}, false, err
+	}
 
 	sample := domain.TrainingSample{
 		ID:        fmt.Sprintf("%s-%d", botID, now.UnixNano()),
@@ -131,6 +135,45 @@ func (s *ChatService) CreateSkill(botID string, in domain.Skill) (domain.Skill, 
 	in.CreatedAt = now
 	in.UpdatedAt = now
 	return s.store.SaveSkill(botID, in)
+}
+
+func (s *ChatService) DeleteSkills(botID string, skillIDs []string) (int, error) {
+	current, err := s.store.ListSkills(botID)
+	if err != nil {
+		return 0, err
+	}
+	if len(skillIDs) == 0 {
+		return 0, nil
+	}
+
+	idSet := make(map[string]struct{}, len(skillIDs))
+	for _, id := range skillIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		idSet[id] = struct{}{}
+	}
+	if len(idSet) == 0 {
+		return 0, nil
+	}
+
+	next := make([]domain.Skill, 0, len(current))
+	deleted := 0
+	for _, sk := range current {
+		if _, ok := idSet[strings.TrimSpace(sk.ID)]; ok {
+			deleted++
+			continue
+		}
+		next = append(next, sk)
+	}
+	if deleted == 0 {
+		return 0, nil
+	}
+	if err := s.store.UpdateSkills(botID, next); err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 func (s *ChatService) PublishTrainingData(ctx context.Context, botID string, zgsNodesOverride []string) (domain.PublishResult, error) {
@@ -184,7 +227,7 @@ func (s *ChatService) PublishTrainingData(ctx context.Context, botID string, zgs
 	return out, nil
 }
 
-func (s *ChatService) generateReply(ctx context.Context, bot domain.BotProfile, message string, llmCfg *llm.Config, skillContext string, x402Context string) (string, bool) {
+func (s *ChatService) generateReply(ctx context.Context, bot domain.BotProfile, message string, llmCfg *llm.Config, skillContext string, x402Context string, transferContext string) (string, bool) {
 	if llmCfg != nil && s.llm != nil && strings.TrimSpace(llmCfg.APIKey) != "" {
 		model := strings.TrimSpace(llmCfg.Model)
 		if model == "" {
@@ -201,6 +244,9 @@ func (s *ChatService) generateReply(ctx context.Context, bot domain.BotProfile, 
 			}
 			if strings.TrimSpace(x402Context) != "" {
 				system = system + "\n\nx402 工具返回（可作为事实依据引用，但不要编造不存在的字段）：\n" + x402Context
+			}
+			if strings.TrimSpace(transferContext) != "" {
+				system = system + "\n\n转账工具返回（仅引用已执行结果，不要编造链上状态）：\n" + transferContext
 			}
 			messages := []llm.Message{{Role: "system", Content: system}}
 
@@ -248,6 +294,14 @@ func (s *ChatService) generateReply(ctx context.Context, bot domain.BotProfile, 
 		promptBuilder.WriteString("我已启用以下 Skills，可以在回答时参考：\n")
 		promptBuilder.WriteString(skillContext)
 	}
+	if strings.TrimSpace(x402Context) != "" {
+		promptBuilder.WriteString("\n\nx402 工具返回（可作为事实依据引用）：\n")
+		promptBuilder.WriteString(x402Context)
+	}
+	if strings.TrimSpace(transferContext) != "" {
+		promptBuilder.WriteString("\n\n转账工具返回（仅引用已执行结果）：\n")
+		promptBuilder.WriteString(transferContext)
+	}
 	return promptBuilder.String(), false
 }
 
@@ -283,7 +337,7 @@ func (s *ChatService) buildSkillContext(botID string, skillIDs []string) (string
 		}
 
 		// Keep x402 tool specs out of the plain-text skill context; they are executed in the frontend.
-		if looksLikeX402SkillContent(sk.Content) {
+		if looksLikeX402SkillContent(sk.Content) || looksLikeTransferSkillContent(sk.Content) {
 			continue
 		}
 

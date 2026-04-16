@@ -44,6 +44,8 @@ go run ./backend/cmd/server
 
 后端启动时会自动读取仓库根目录的 `.env`（没有也不影响启动）。示例配置见 `.env.example`。
 
+`DATABASE_URL` 仅用于把发布记录写入 PostgreSQL，本地开发可留空。若已配置但数据库暂时不可用，后端默认会降级为内存 publish log 并继续启动；如果你希望数据库不可用时直接启动失败，可设置 `DATABASE_REQUIRED=1`。
+
 ## 大模型调用
 
 前端页面只需要填写 `API Key`，并在机器人资料里选择/填写“默认模型 ID”。API Key 不会保存到服务器，只会在发送消息时随 `POST /api/bots/:id/chat` 请求传给后端用于调用模型。

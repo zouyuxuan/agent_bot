@@ -26,11 +26,11 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) SaveBot(bot domain.BotProfile) domain.BotProfile {
+func (s *MemoryStore) SaveBot(bot domain.BotProfile) (domain.BotProfile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bots[bot.ID] = bot
-	return bot
+	return bot, nil
 }
 
 func (s *MemoryStore) ListBots() []domain.BotProfile {

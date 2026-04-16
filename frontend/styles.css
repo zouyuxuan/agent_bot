@@ -56,6 +56,7 @@ body::before {
   padding: 24px;
   max-width: 1480px;
   margin: 0 auto;
+  height: 100vh;
 }
 
 .panel {
@@ -66,6 +67,7 @@ body::before {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 22px;
+  min-height: 0;
 }
 
 .panel::after {
@@ -240,10 +242,20 @@ button.primary {
   font-weight: 600;
 }
 
+.profile-panel,
+.dataset-panel,
+.chat-panel {
+  height: calc(100vh - 48px);
+}
+
+.profile-panel,
+.dataset-panel {
+  overflow: auto;
+}
+
 .chat-panel {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  height: calc(100vh - 48px);
   overflow: hidden;
   min-height: 0;
 }
@@ -343,8 +355,6 @@ button.primary {
   margin-top: 18px;
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 260px);
-  overflow: auto;
 }
 
 .dataset-item {
@@ -391,6 +401,12 @@ button.primary {
   border-radius: 16px;
   border: 1px solid rgba(47, 166, 255, 0.14);
   background: rgba(255, 255, 255, 0.65);
+}
+
+.skills-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .x402-box {
@@ -531,15 +547,24 @@ button.primary {
     grid-template-columns: 1fr;
     padding: 16px;
     gap: 14px;
+    height: auto;
   }
 
+  .profile-panel,
+  .dataset-panel,
   .chat-panel {
     height: auto;
     min-height: 520px;
   }
 
+  .profile-panel,
+  .dataset-panel {
+    overflow: visible;
+  }
+
   .dataset-list {
     max-height: 320px;
+    overflow: auto;
   }
 }
 

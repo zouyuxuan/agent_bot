@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	x402 "github.com/x402-foundation/x402/go"
 	x402http "github.com/x402-foundation/x402/go/http"
@@ -68,4 +69,21 @@ func (c *Client) DoContext(ctx context.Context, req *http.Request) (*http.Respon
 		return nil, errors.New("nil request")
 	}
 	return c.Do(req.WithContext(ctx))
+}
+
+func (c *Client) DoContextNoRedirect(ctx context.Context, req *http.Request, timeout time.Duration) (*http.Response, error) {
+	if c == nil || c.http == nil {
+		return nil, errors.New("x402 client not initialized")
+	}
+	if req == nil {
+		return nil, errors.New("nil request")
+	}
+	cloned := *c.http
+	if timeout > 0 {
+		cloned.Timeout = timeout
+	}
+	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return cloned.Do(req.WithContext(ctx))
 }

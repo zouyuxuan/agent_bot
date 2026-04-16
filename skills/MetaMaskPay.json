@@ -1,0 +1,9 @@
+{
+  "type": "metamask_transfer",
+  "name": "MetaMaskPay",
+  "description": "当输入中涉及转账/支付时，直接调用 MetaMask 发起链上转账",
+  "triggerKeywords": ["转账", "支付", "付款", "pay", "transfer"],
+  "chainId": 16602,
+  "token": "0g",
+  "decimals": 18
+}

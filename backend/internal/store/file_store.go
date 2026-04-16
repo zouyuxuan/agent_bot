@@ -51,12 +51,14 @@ func NewFileStore(path string) (*FileStore, error) {
 	return fs, nil
 }
 
-func (s *FileStore) SaveBot(bot domain.BotProfile) domain.BotProfile {
+func (s *FileStore) SaveBot(bot domain.BotProfile) (domain.BotProfile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bots[bot.ID] = bot
-	_ = s.flushLocked()
-	return bot
+	if err := s.flushLocked(); err != nil {
+		return domain.BotProfile{}, err
+	}
+	return bot, nil
 }
 
 func (s *FileStore) ListBots() []domain.BotProfile {
@@ -140,7 +142,9 @@ func (s *FileStore) SaveSkill(botID string, skill domain.Skill) (domain.Skill, e
 		return domain.Skill{}, ErrBotNotFound
 	}
 	s.skills[botID] = append(s.skills[botID], skill)
-	_ = s.flushLocked()
+	if err := s.flushLocked(); err != nil {
+		return domain.Skill{}, err
+	}
 	return skill, nil
 }
 

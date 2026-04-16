@@ -39,7 +39,7 @@ type OpenAICompatClient struct {
 
 func NewOpenAICompatClient() *OpenAICompatClient {
 	return &OpenAICompatClient{
-		http: &http.Client{Timeout: 45 * time.Second},
+		http: &http.Client{},
 	}
 }
 
@@ -83,16 +83,23 @@ func (c *OpenAICompatClient) Chat(ctx context.Context, cfg Config, messages []Me
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	callCtx := ctx
+	if cfg.TimeoutMS > 0 {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, time.Duration(cfg.TimeoutMS)*time.Millisecond)
+		defer cancel()
+	} else {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+	}
+
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-
-	if cfg.TimeoutMS > 0 {
-		c.http.Timeout = time.Duration(cfg.TimeoutMS) * time.Millisecond
-	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {

@@ -89,3 +89,20 @@ type X402ToolResult struct {
 	StartedAt string            `json:"startedAt,omitempty"`
 	EndedAt   string            `json:"endedAt,omitempty"`
 }
+
+// TransferToolResult represents the result of a frontend-executed wallet transfer.
+// It is sent with chat requests so the assistant can reference transaction outcomes.
+type TransferToolResult struct {
+	SkillID   string `json:"skillId"`
+	Type      string `json:"type,omitempty"` // native | erc20
+	ChainID   int    `json:"chainId,omitempty"`
+	To        string `json:"to,omitempty"`
+	Token     string `json:"token,omitempty"`
+	Amount    string `json:"amount,omitempty"`
+	AmountWei string `json:"amountWei,omitempty"`
+	TxHash    string `json:"txHash,omitempty"`
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	StartedAt string `json:"startedAt,omitempty"`
+	EndedAt   string `json:"endedAt,omitempty"`
+}
