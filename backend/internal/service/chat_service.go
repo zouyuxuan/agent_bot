@@ -247,7 +247,16 @@ func (s *ChatService) generateReply(ctx context.Context, bot domain.BotProfile, 
 		}
 		if model != "" {
 			cfg := *llmCfg
-			cfg.Provider = llm.ProviderOpenAICompat
+			if strings.TrimSpace(string(cfg.Provider)) == "" {
+				if strings.EqualFold(strings.TrimSpace(bot.ModelProvider), string(llm.ProviderAnthropic)) {
+					cfg.Provider = llm.ProviderAnthropic
+				} else {
+					cfg.Provider = llm.ProviderOpenAICompat
+				}
+			}
+			if strings.TrimSpace(cfg.BaseURL) == "" && strings.TrimSpace(bot.ModelBaseURL) != "" {
+				cfg.BaseURL = strings.TrimSpace(bot.ModelBaseURL)
+			}
 			cfg.Model = model
 
 			system := buildSystemPrompt(bot)
@@ -413,7 +422,7 @@ func summarizeTurn(message, reply string) string {
 func inferTags(bot domain.BotProfile, message string) []string {
 	tags := []string{"chat", bot.ModelType}
 	if bot.Personality != "" {
-		tags = append(tags, "persona")
+		tags = append(tags, "personal")
 	}
 	if strings.Contains(message, "?") || strings.Contains(message, "？") {
 		tags = append(tags, "question")

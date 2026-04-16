@@ -43,6 +43,8 @@ const llmTemp = document.querySelector("#llm-temp");
 const debugSkills = document.querySelector("#debug-skills");
 const botModelPreset = document.querySelector("#bot-model-preset");
 const botModelCustom = document.querySelector("#bot-model-custom");
+const botModelProvider = document.querySelector("#bot-model-provider");
+const botModelBaseUrl = document.querySelector("#bot-model-base-url");
 const walletConnectBtn = document.querySelector("#wallet-connect");
 const walletStatus = document.querySelector("#wallet-status");
 const walletBox = document.querySelector("#wallet-box");
@@ -56,6 +58,14 @@ const x402Output = document.querySelector("#x402-output");
 const x402Box = document.querySelector("#x402-box");
 const x402Toggle = document.querySelector("#x402-toggle");
 const x402UseProxy = document.querySelector("#x402-use-proxy");
+const confirmDialog = document.querySelector("#confirm-dialog");
+const confirmDialogBackdrop = document.querySelector("#confirm-dialog-backdrop");
+const confirmDialogHeading = document.querySelector("#confirm-dialog-heading");
+const confirmDialogMessage = document.querySelector("#confirm-dialog-message");
+const confirmDialogCancelBtn = document.querySelector("#confirm-dialog-cancel");
+const confirmDialogConfirmBtn = document.querySelector("#confirm-dialog-confirm");
+
+let activeConfirmDialog = null;
 
 function normalizeSkillFilename(filename) {
   let out = String(filename || "").trim().replaceAll("\\", "/");
@@ -95,19 +105,9 @@ function syncDatasetActions() {
 
 function syncDistillationActions() {
   const datasetCount = Array.isArray(state.datasets) ? state.datasets.length : 0;
-  const drafts = Array.isArray(state.distillation?.candidateSkills) ? state.distillation.candidateSkills : [];
-  const saved = !!state.distillation?.saved;
   if (memoryDistillRunBtn) {
     memoryDistillRunBtn.disabled = datasetCount === 0;
     memoryDistillRunBtn.textContent = datasetCount > 0 ? `0G Compute 蒸馏记忆（${Math.min(datasetCount, 12)}）` : "0G Compute 蒸馏记忆";
-  }
-  if (memoryDistillSaveBtn) {
-    memoryDistillSaveBtn.disabled = drafts.length === 0 || saved;
-    if (saved) {
-      memoryDistillSaveBtn.textContent = `已保存候选 Skills（${drafts.length}）`;
-    } else {
-      memoryDistillSaveBtn.textContent = drafts.length > 0 ? `保存候选 Skills（${drafts.length}）` : "保存候选 Skills";
-    }
   }
 }
 
@@ -246,55 +246,57 @@ function renderDistillationResult() {
   if (!result) {
     memoryDistillResult.innerHTML = `
       <div class="distill-empty">
-        <small>点击“0G Compute 蒸馏记忆”，把原始对话记忆整理成长期偏好、稳定规则和可复用 Skills 草稿。</small>
+        <small>点击“0G Compute 蒸馏记忆”，把原始对话记忆整理成一段简洁的记忆摘要。</small>
       </div>
     `;
     return;
   }
 
-  const profileEntries = Object.entries(result.userProfile || {})
-    .map(([key, value]) => {
-      return `<li><strong>${escapeHtml(key)}：</strong>${escapeHtml(stringifyDistillValue(value) || "-")}</li>`;
-    })
-    .join("");
-
-  const rules = Array.isArray(result.stableRules)
-    ? result.stableRules.map((rule) => `<li>${escapeHtml(String(rule || "").trim())}</li>`).join("")
-    : "";
-
-  const skills = Array.isArray(result.candidateSkills)
-    ? result.candidateSkills
-        .map((skill) => {
-          return `
-            <article class="distill-skill-card">
-              <strong>${escapeHtml(skill.name || "未命名 Skill")}</strong>
-              <small>${escapeHtml(skill.filename || "distilled/skill.md")}</small>
-              <pre>${escapeHtml(String(skill.content || "").trim())}</pre>
-            </article>
-          `;
-        })
-        .join("")
-    : "";
-
   memoryDistillResult.innerHTML = `
     <section class="distill-section">
       <strong>记忆摘要</strong>
       <small>${escapeHtml(result.memorySummary || "暂无摘要")}</small>
-      <small>来源：${escapeHtml(result.source || "0G Compute")} · 模型：${escapeHtml(result.model || "-")} · 样本数：${escapeHtml(String(result.sampleCount || 0))}</small>
-    </section>
-    <section class="distill-section">
-      <strong>用户画像</strong>
-      ${profileEntries ? `<ul class="distill-profile-list">${profileEntries}</ul>` : `<small>暂无结构化画像</small>`}
-    </section>
-    <section class="distill-section">
-      <strong>稳定规则</strong>
-      ${rules ? `<ul class="distill-rules-list">${rules}</ul>` : `<small>暂无稳定规则</small>`}
-    </section>
-    <section class="distill-section">
-      <strong>候选 Skills</strong>
-      <div class="distill-skills">${skills || `<small>暂无 Skills 草稿</small>`}</div>
     </section>
   `;
+}
+
+function closeConfirmDialog(confirmed) {
+  if (!activeConfirmDialog) return;
+  const { resolve } = activeConfirmDialog;
+  activeConfirmDialog = null;
+  if (confirmDialog) {
+    confirmDialog.classList.add("hidden");
+    confirmDialog.setAttribute("aria-hidden", "true");
+  }
+  if (confirmDialogConfirmBtn) {
+    confirmDialogConfirmBtn.classList.remove("danger");
+  }
+  resolve(Boolean(confirmed));
+}
+
+function showConfirmDialog({ title = "请确认", message = "", confirmLabel = "继续", cancelLabel = "取消", danger = false } = {}) {
+  if (!confirmDialog || !confirmDialogConfirmBtn || !confirmDialogCancelBtn || !confirmDialogHeading || !confirmDialogMessage) {
+    return Promise.resolve(false);
+  }
+  if (activeConfirmDialog) {
+    activeConfirmDialog.resolve(false);
+    activeConfirmDialog = null;
+  }
+
+  confirmDialogHeading.textContent = String(title || "请确认");
+  confirmDialogMessage.textContent = String(message || "");
+  confirmDialogConfirmBtn.textContent = String(confirmLabel || "继续");
+  confirmDialogCancelBtn.textContent = String(cancelLabel || "取消");
+  confirmDialogConfirmBtn.classList.toggle("danger", !!danger);
+  confirmDialog.classList.remove("hidden");
+  confirmDialog.setAttribute("aria-hidden", "false");
+
+  return new Promise((resolve) => {
+    activeConfirmDialog = { resolve };
+    setTimeout(() => {
+      confirmDialogConfirmBtn.focus();
+    }, 0);
+  });
 }
 
 if (skillsList) {
@@ -316,13 +318,28 @@ chatForm.addEventListener("submit", handleChatSubmit);
 publishBtn.addEventListener("click", publishDatasets);
 datasetExportSkillsBtn?.addEventListener("click", exportDatasetsAsSkills);
 memoryDistillRunBtn?.addEventListener("click", distillMemoriesWith0GCompute);
-memoryDistillSaveBtn?.addEventListener("click", saveDistilledSkillsToLibrary);
 skillsLocalUploadBtn?.addEventListener("click", uploadLocalSkills);
 skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillFolders);
 skillsDeleteSelectedBtn?.addEventListener("click", deleteSelectedSkills);
 skillsGitHubImportPublishBtn?.addEventListener("click", importAndPublishSkillsFromGitHub);
 skillsPublishBundleBtn?.addEventListener("click", publishSkillsBundle);
 botModelPreset?.addEventListener("change", syncBotModelPreset);
+botModelProvider?.addEventListener("change", () => {
+  if (!botModelBaseUrl) return;
+  const current = String(botModelBaseUrl.value || "").trim();
+  if (!current) {
+    botModelBaseUrl.value = providerDefaultBaseUrl(botModelProvider.value);
+  }
+});
+confirmDialogBackdrop?.addEventListener("click", () => closeConfirmDialog(false));
+confirmDialogCancelBtn?.addEventListener("click", () => closeConfirmDialog(false));
+confirmDialogConfirmBtn?.addEventListener("click", () => closeConfirmDialog(true));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeConfirmDialog) {
+    event.preventDefault();
+    closeConfirmDialog(false);
+  }
+});
 walletConnectBtn?.addEventListener("click", handleWalletButtonClick);
 x402Send?.addEventListener("click", sendX402Test);
 x402Toggle?.addEventListener("click", toggleX402Panel);
@@ -331,6 +348,10 @@ syncDatasetActions();
 syncSkillSelectionActions();
 renderMemoryOverview();
 renderDistillationResult();
+if (botModelProvider && !botModelProvider.value) botModelProvider.value = "openai_compat";
+if (botModelBaseUrl && !String(botModelBaseUrl.value || "").trim()) {
+  botModelBaseUrl.value = providerDefaultBaseUrl(botModelProvider?.value || "");
+}
 loadBots();
 restoreZgsNodes();
 renderWalletStatus();
@@ -345,17 +366,63 @@ function syncBotModelPreset() {
   const chosen = botModelPreset.value || "";
   if (chosen) {
     botModelCustom.value = chosen;
+    const option = botModelPreset.selectedOptions?.[0];
+    if (botModelProvider) {
+      botModelProvider.value = option?.dataset?.provider || inferProviderFromModel(chosen);
+    }
+    if (botModelBaseUrl) {
+      botModelBaseUrl.value = option?.dataset?.baseUrl || inferBaseUrlFromModel(chosen, botModelProvider?.value || "");
+    }
   }
 }
 
-function inferBaseUrlFromModel(model) {
+function providerDefaultBaseUrl(provider) {
+  const p = String(provider || "").trim();
+  if (p === "anthropic") return "https://api.anthropic.com/v1";
+  return "";
+}
+
+function inferProviderFromModel(model) {
   const m = String(model || "").trim();
   const low = m.toLowerCase();
-  if (!m) return "";
-  if (low.startsWith("deepseek-")) return "https://api.deepseek.com";
+  if (!m) return "openai_compat";
+  if (low.startsWith("claude")) return "anthropic";
+  return "openai_compat";
+}
+
+function inferBaseUrlFromModel(model, provider = "") {
+  const m = String(model || "").trim();
+  const low = m.toLowerCase();
+  const p = String(provider || "").trim() || inferProviderFromModel(m);
+  if (!m) return providerDefaultBaseUrl(p);
+  if (p === "anthropic") return "https://api.anthropic.com/v1";
+  if (low.startsWith("deepseek-")) return "https://api.deepseek.com/v1";
+  if (low.startsWith("grok-")) return "https://api.x.ai/v1";
+  if (low.startsWith("gemini-")) return "https://generativelanguage.googleapis.com/v1beta/openai";
+  if (low.startsWith("qwen-")) return "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+  if (low.startsWith("kimi-") || low.startsWith("moonshot-")) return "https://api.moonshot.cn/v1";
+  if (low.startsWith("glm-")) return "https://open.bigmodel.cn/api/paas/v4";
   if (m.startsWith("MiniMax-") || low.startsWith("minimax-")) return "https://api.minimax.io/v1";
-  if (low.startsWith("gpt-") || low.startsWith("o1") || low.startsWith("o3")) return "https://api.openai.com";
-  return "https://api.openai.com";
+  if (low.startsWith("gpt-") || low.startsWith("o1") || low.startsWith("o3") || low.startsWith("o4")) return "https://api.openai.com/v1";
+  return providerDefaultBaseUrl(p) || "https://api.openai.com/v1";
+}
+
+function buildBotLLMConfig() {
+  const apiKey = llmApiKey?.value?.trim() || "";
+  const model = String(state.activeBot?.modelType || "").trim();
+  if (!apiKey || !model) return null;
+
+  const provider = String(state.activeBot?.modelProvider || "").trim() || inferProviderFromModel(model);
+  const baseUrl = String(state.activeBot?.modelBaseUrl || "").trim() || inferBaseUrlFromModel(model, provider);
+
+  return {
+    apiKey,
+    provider,
+    baseUrl,
+    model,
+    temperature: Number.parseFloat(llmTemp?.value || "0.7") || 0.7,
+    maxTokens: 2048,
+  };
 }
 
 async function fetchJson(url, options) {
@@ -844,19 +911,7 @@ async function handleChatSubmit(event) {
   chatInput.value = "";
   const thinking = appendThinkingBubble();
 
-  const apiKey = llmApiKey?.value?.trim() || "";
-  const modelFromBot = state.activeBot?.modelType || "";
-
-  const llm =
-    apiKey && modelFromBot
-      ? {
-          apiKey,
-          baseUrl: inferBaseUrlFromModel(modelFromBot),
-          model: modelFromBot,
-          temperature: Number.parseFloat(llmTemp?.value || "0.7") || 0.7,
-          maxTokens: 2048,
-        }
-      : null;
+  const llm = buildBotLLMConfig();
 
   let data;
   try {
@@ -1067,18 +1122,7 @@ async function handleX402CommandMessage(message) {
   }
 
   // Send tool output to backend so the agent can respond using the result.
-  const apiKey = llmApiKey?.value?.trim() || "";
-  const modelFromBot = state.activeBot?.modelType || "";
-  const llm =
-    apiKey && modelFromBot
-      ? {
-          apiKey,
-          baseUrl: inferBaseUrlFromModel(modelFromBot),
-          model: modelFromBot,
-          temperature: Number.parseFloat(llmTemp?.value || "0.7") || 0.7,
-          maxTokens: 2048,
-        }
-      : null;
+  const llm = buildBotLLMConfig();
 
   try {
     const thinking = appendThinkingBubble();
@@ -1249,10 +1293,25 @@ async function exportDatasetsAsSkills() {
     publishResult.textContent = "正在导出训练数据为 Skills...";
   }
 
+  const distilledSummary = String(state.distillation?.memorySummary || "").trim();
+  const includeDistilledMemory =
+    distilledSummary !== ""
+      ? await showConfirmDialog({
+          title: "一起导出蒸馏记忆？",
+          message: "点击“确定”会把蒸馏记忆和训练数据合并导出为一个 Skill。点击“取消”则只导出训练数据为 Skills。",
+          confirmLabel: "一起导出",
+          cancelLabel: "只导出训练数据",
+        })
+      : false;
+
   let resp;
   try {
     resp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets/export_skills`, {
-      method: "GET",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        memorySummary: includeDistilledMemory ? distilledSummary : "",
+      }),
     });
   } catch (e) {
     if (publishResult) publishResult.textContent = `[错误] ${String(e?.message || e)}`;
@@ -1283,7 +1342,9 @@ async function exportDatasetsAsSkills() {
   const filename = readAttachmentFilename(resp.headers.get("Content-Disposition"), fallbackName);
   downloadBlobFile(blob, filename);
   if (publishResult) {
-    publishResult.textContent = `已导出 ${state.datasets.length} 条训练样本为 Skills 压缩包：${filename}`;
+    publishResult.textContent = includeDistilledMemory
+      ? `已将蒸馏记忆和 ${state.datasets.length} 条训练样本合并导出为单个 Skill：${filename}`
+      : `已导出 ${state.datasets.length} 条训练样本为 Skills 压缩包：${filename}`;
   }
 }
 
@@ -1325,58 +1386,7 @@ async function distillMemoriesWith0GCompute() {
   };
   renderDistillationResult();
   if (memoryDistillStatus) {
-    const count = Array.isArray(data?.candidateSkills) ? data.candidateSkills.length : 0;
-    memoryDistillStatus.textContent = `蒸馏完成：已基于 ${Number(data?.sampleCount || 0)} 条记忆生成 ${count} 个候选 Skills。`;
-  }
-}
-
-async function saveDistilledSkillsToLibrary() {
-  if (!state.activeBotId) {
-    alert("请先选择机器人");
-    return;
-  }
-  const drafts = Array.isArray(state.distillation?.candidateSkills) ? state.distillation.candidateSkills : [];
-  if (!drafts.length) {
-    alert("暂无可保存的候选 Skills");
-    return;
-  }
-  if (state.distillation?.saved) {
-    return;
-  }
-
-  if (memoryDistillStatus) {
-    memoryDistillStatus.textContent = "正在保存蒸馏后的 Skills...";
-  }
-
-  let data;
-  try {
-    data = await fetchJsonTimed(
-      `${apiBase}/api/bots/${state.activeBotId}/datasets/distill/save`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skills: drafts }),
-      },
-      45000,
-    );
-  } catch (e) {
-    if (memoryDistillStatus) memoryDistillStatus.textContent = `[错误] ${String(e?.message || e)}`;
-    return;
-  }
-
-  state.distillation = {
-    ...(state.distillation || {}),
-    saved: true,
-  };
-  renderDistillationResult();
-  try {
-    await refreshSkills();
-  } catch (e) {
-    if (memoryDistillStatus) memoryDistillStatus.textContent = `[错误] ${String(e?.message || e)}`;
-    return;
-  }
-  if (memoryDistillStatus) {
-    memoryDistillStatus.textContent = `已保存 ${Number(data?.count || drafts.length)} 个候选 Skills 到当前 Skill Layer。`;
+    memoryDistillStatus.textContent = `蒸馏完成：已基于 ${Number(data?.sampleCount || 0)} 条记忆生成记忆摘要。`;
   }
 }
 
@@ -1510,7 +1520,14 @@ async function deleteSelectedSkills() {
     return;
   }
 
-  if (!window.confirm(`将删除已选的 ${selectedFolders.size} 个文件夹中的 ${skillIDs.length} 个 Skills。此操作不可撤销，是否继续？`)) {
+  const confirmed = await showConfirmDialog({
+    title: "删除已选 Skills？",
+    message: `将删除已选的 ${selectedFolders.size} 个文件夹中的 ${skillIDs.length} 个 Skills。此操作不可撤销。`,
+    confirmLabel: "确认删除",
+    cancelLabel: "取消",
+    danger: true,
+  });
+  if (!confirmed) {
     return;
   }
 

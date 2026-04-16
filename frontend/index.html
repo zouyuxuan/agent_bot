@@ -49,22 +49,39 @@
             默认模型 ID
             <select id="bot-model-preset">
               <option value="">自定义...</option>
-              <option value="gpt-4o-mini">OpenAI: gpt-4o-mini</option>
-              <option value="gpt-4o">OpenAI: gpt-4o</option>
-              <option value="gpt-4.1-mini">OpenAI: gpt-4.1-mini</option>
-              <option value="gpt-4.1">OpenAI: gpt-4.1</option>
-              <option value="deepseek-chat">DeepSeek: deepseek-chat</option>
-              <option value="deepseek-reasoner">DeepSeek: deepseek-reasoner</option>
-              <option value="MiniMax-M2.5">MiniMax: MiniMax-M2.5</option>
-              <option value="MiniMax-M2.5-highspeed">MiniMax: MiniMax-M2.5-highspeed</option>
-              <option value="qwen-plus">Qwen: qwen-plus</option>
-              <option value="qwen-max">Qwen: qwen-max</option>
-              <option value="moonshot-v1-8k">Moonshot: moonshot-v1-8k</option>
-              <option value="glm-4">Zhipu: glm-4</option>
-              <option value="claude-3.5-sonnet">Anthropic: claude-3.5-sonnet</option>
-              <option value="gemini-1.5-pro">Google: gemini-1.5-pro</option>
+              <option value="gpt-5" data-provider="openai_compat" data-base-url="https://api.openai.com/v1">OpenAI: gpt-5</option>
+              <option value="gpt-5-mini" data-provider="openai_compat" data-base-url="https://api.openai.com/v1">OpenAI: gpt-5-mini</option>
+              <option value="gpt-5-nano" data-provider="openai_compat" data-base-url="https://api.openai.com/v1">OpenAI: gpt-5-nano</option>
+              <option value="gpt-4.1" data-provider="openai_compat" data-base-url="https://api.openai.com/v1">OpenAI: gpt-4.1</option>
+              <option value="gpt-4.1-mini" data-provider="openai_compat" data-base-url="https://api.openai.com/v1">OpenAI: gpt-4.1-mini</option>
+              <option value="claude-sonnet-4-5" data-provider="anthropic" data-base-url="https://api.anthropic.com/v1">Anthropic: claude-sonnet-4-5</option>
+              <option value="claude-opus-4-1" data-provider="anthropic" data-base-url="https://api.anthropic.com/v1">Anthropic: claude-opus-4-1</option>
+              <option value="claude-3-7-sonnet-latest" data-provider="anthropic" data-base-url="https://api.anthropic.com/v1">Anthropic: claude-3-7-sonnet-latest</option>
+              <option value="gemini-2.5-pro" data-provider="openai_compat" data-base-url="https://generativelanguage.googleapis.com/v1beta/openai">Google: gemini-2.5-pro</option>
+              <option value="gemini-2.5-flash" data-provider="openai_compat" data-base-url="https://generativelanguage.googleapis.com/v1beta/openai">Google: gemini-2.5-flash</option>
+              <option value="grok-4" data-provider="openai_compat" data-base-url="https://api.x.ai/v1">xAI: grok-4</option>
+              <option value="grok-3-mini-fast" data-provider="openai_compat" data-base-url="https://api.x.ai/v1">xAI: grok-3-mini-fast</option>
+              <option value="deepseek-chat" data-provider="openai_compat" data-base-url="https://api.deepseek.com/v1">DeepSeek: deepseek-chat</option>
+              <option value="deepseek-reasoner" data-provider="openai_compat" data-base-url="https://api.deepseek.com/v1">DeepSeek: deepseek-reasoner</option>
+              <option value="qwen-max-latest" data-provider="openai_compat" data-base-url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1">Qwen: qwen-max-latest</option>
+              <option value="qwen-plus-latest" data-provider="openai_compat" data-base-url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1">Qwen: qwen-plus-latest</option>
+              <option value="kimi-k2.5" data-provider="openai_compat" data-base-url="https://api.moonshot.cn/v1">Moonshot: kimi-k2.5</option>
+              <option value="kimi-k2-0905-preview" data-provider="openai_compat" data-base-url="https://api.moonshot.cn/v1">Moonshot: kimi-k2-0905-preview</option>
+              <option value="glm-4.5" data-provider="openai_compat" data-base-url="https://open.bigmodel.cn/api/paas/v4">Z.AI: glm-4.5</option>
+              <option value="glm-4.5-air" data-provider="openai_compat" data-base-url="https://open.bigmodel.cn/api/paas/v4">Z.AI: glm-4.5-air</option>
             </select>
             <input id="bot-model-custom" name="modelType" placeholder="也可以直接输入模型 ID" />
+          </label>
+          <label>
+            模型提供商
+            <select id="bot-model-provider" name="modelProvider">
+              <option value="openai_compat">OpenAI-Compatible</option>
+              <option value="anthropic">Anthropic Messages API</option>
+            </select>
+          </label>
+          <label>
+            模型 Base URL
+            <input id="bot-model-base-url" name="modelBaseUrl" placeholder="预设会自动填充；自定义模型时可手动填写" />
           </label>
           <label>
             系统提示词
@@ -93,7 +110,7 @@
             <input id="debug-skills" type="checkbox" />
             <label for="debug-skills" class="debug-toggle-label">调试：显示本轮使用的 Skills</label>
           </div>
-          <p class="hint">提示：只需选择机器人“默认模型 ID”并填写 API Key，即可直接调用对应大模型；无需再手动配置 Provider/Base URL。</p>
+          <p class="hint">提示：预设会自动填充 Provider 与 Base URL；自定义模型时可手动切换到 OpenAI-Compatible 或 Anthropic。</p>
           <p class="hint">当前前端已将单次最大输出提高到 2048 tokens。</p>
         </div>
       </aside>
@@ -136,10 +153,9 @@
         <div id="memory-overview" class="memory-overview"></div>
         <div class="distill-box">
           <div class="section-title">0G Compute Memory Distillation</div>
-          <p class="hint">使用 0G Compute 对原始记忆做蒸馏，自动提炼长期偏好、稳定规则与可复用 Skills 草稿。</p>
+          <p class="hint">使用 0G Compute 对原始记忆做蒸馏，仅保留一段简洁的记忆摘要。</p>
           <div class="distill-actions">
             <button id="memory-distill-run" class="secondary" type="button">0G Compute 蒸馏记忆</button>
-            <button id="memory-distill-save" class="secondary" type="button">保存候选 Skills</button>
           </div>
           <p id="memory-distill-status" class="hint"></p>
           <div id="memory-distill-result" class="distill-result"></div>
@@ -222,6 +238,19 @@
         <p id="publish-result" class="publish-result"></p>
         <div id="dataset-list" class="dataset-list"></div>
       </aside>
+    </div>
+
+    <div id="confirm-dialog" class="confirm-dialog hidden" aria-hidden="true">
+      <div id="confirm-dialog-backdrop" class="confirm-dialog-backdrop"></div>
+      <div class="confirm-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <p id="confirm-dialog-title" class="eyebrow">确认操作</p>
+        <h2 id="confirm-dialog-heading">请确认</h2>
+        <p id="confirm-dialog-message" class="hint"></p>
+        <div class="confirm-dialog-actions">
+          <button id="confirm-dialog-cancel" class="secondary" type="button">取消</button>
+          <button id="confirm-dialog-confirm" type="button">继续</button>
+        </div>
+      </div>
     </div>
 
     <script src="./app.js" type="module"></script>

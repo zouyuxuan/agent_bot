@@ -3,16 +3,18 @@ package domain
 import "time"
 
 type BotProfile struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Personality  string    `json:"personality"`
-	Gender       string    `json:"gender"`
-	AvatarURL    string    `json:"avatarUrl"`
-	ModelType    string    `json:"modelType"`
-	SystemPrompt string    `json:"systemPrompt"`
-	GrowthScore  int       `json:"growthScore"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Personality   string    `json:"personality"`
+	Gender        string    `json:"gender"`
+	AvatarURL     string    `json:"avatarUrl"`
+	ModelProvider string    `json:"modelProvider,omitempty"`
+	ModelBaseURL  string    `json:"modelBaseUrl,omitempty"`
+	ModelType     string    `json:"modelType"`
+	SystemPrompt  string    `json:"systemPrompt"`
+	GrowthScore   int       `json:"growthScore"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type ChatMessage struct {

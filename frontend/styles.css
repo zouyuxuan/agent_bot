@@ -405,7 +405,7 @@ button.primary {
 
 .distill-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -432,42 +432,6 @@ button.primary {
 
 .distill-section strong {
   display: block;
-}
-
-.distill-profile-list,
-.distill-rules-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text);
-  display: grid;
-  gap: 6px;
-}
-
-.distill-profile-list li,
-.distill-rules-list li {
-  line-height: 1.45;
-}
-
-.distill-skills {
-  display: grid;
-  gap: 10px;
-}
-
-.distill-skill-card {
-  padding: 12px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(25, 198, 176, 0.16);
-  display: grid;
-  gap: 8px;
-}
-
-.distill-skill-card pre {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-  color: var(--muted);
 }
 
 .dataset-item {
@@ -717,6 +681,52 @@ button.primary {
   border-radius: 14px;
 }
 
+.confirm-dialog.hidden {
+  display: none;
+}
+
+.confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.confirm-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 24, 20, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.confirm-dialog-panel {
+  position: relative;
+  width: min(100%, 440px);
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(47, 166, 255, 0.16);
+  box-shadow: 0 28px 56px rgba(11, 31, 24, 0.24);
+  display: grid;
+  gap: 12px;
+}
+
+.confirm-dialog-panel h2 {
+  font-size: 24px;
+}
+
+.confirm-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.confirm-dialog-actions button.danger {
+  background: linear-gradient(135deg, #d62b55 0%, #ff6b7d 100%);
+}
+
 @media (max-width: 1200px) {
   .shell {
     grid-template-columns: 1fr;
@@ -763,7 +773,8 @@ button.primary {
 
   .memory-overview,
   .dataset-actions,
-  .distill-actions {
+  .distill-actions,
+  .confirm-dialog-actions {
     grid-template-columns: 1fr;
   }
 }

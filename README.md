@@ -24,7 +24,7 @@
 - 自动把每轮对话转换为长期记忆样本
 - 查看训练样本与样本级别的 0G proof 信息
 - 使用 0G Compute 对长期记忆做蒸馏，自动提炼用户画像、稳定规则与 Skills 草稿
-- 一键将训练样本导出为 Skills 压缩包，便于复用、分享或重新导入
+- 一键将训练样本导出为 Skills 压缩包；若已有蒸馏记忆，也可合并导出为单个 Skill
 - 一键将训练样本发布到 0G（已接入 0G Storage Go SDK；未配置密钥时自动降级为本地模拟引用）
 - 将训练记忆转化为 Skills，并作为可迁移的 Agent 资产层管理
 - 后端可直接托管前端静态页面
@@ -53,7 +53,12 @@ go run ./backend/cmd/server
 
 前端页面只需要填写 `API Key`，并在机器人资料里选择/填写“默认模型 ID”。API Key 不会保存到服务器，只会在发送消息时随 `POST /api/bots/:id/chat` 请求传给后端用于调用模型。
 
-后端实现的是 OpenAI Compatible 的 `POST /v1/chat/completions` 方式，并会根据“默认模型 ID”自动推断常见厂商的 Base URL（例如 `deepseek-*`、`MiniMax-*`、`gpt-*` 等）。
+当前支持两类接入：
+
+- `OpenAI-Compatible`：OpenAI、Google Gemini（OpenAI compatibility）、xAI、DeepSeek、Qwen、Moonshot、Z.AI 等
+- `Anthropic Messages API`
+
+预设模型会自动带出对应的 Provider 与 Base URL；自定义模型时也可以手动填写。
 
 ## 关键接口
 

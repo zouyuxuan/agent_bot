@@ -11,7 +11,7 @@ import (
 	"ai-bot-chain/backend/internal/domain"
 )
 
-func (s *ChatService) ExportTrainingSamplesAsSkills(botID string) ([]byte, string, int, error) {
+func (s *ChatService) ExportTrainingSamplesAsSkills(botID string, memorySummary string) ([]byte, string, int, error) {
 	bot, err := s.store.GetBot(botID)
 	if err != nil {
 		return nil, "", 0, err
@@ -30,16 +30,14 @@ func (s *ChatService) ExportTrainingSamplesAsSkills(botID string) ([]byte, strin
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 
-	for i, sample := range samples {
-		entryName := fmt.Sprintf("%s/%03d-%s.md", folderName, i+1, buildTrainingSkillFilename(sample, i+1))
+	memorySummary = strings.TrimSpace(memorySummary)
+	if memorySummary != "" {
+		entryName := fmt.Sprintf("%s/%s.md", folderName, "memory-distilled-skill")
 		h := &zip.FileHeader{
 			Name:   entryName,
 			Method: zip.Deflate,
 		}
-		modTime := sample.CreatedAt
-		if modTime.IsZero() {
-			modTime = time.Now()
-		}
+		modTime := time.Now()
 		h.SetModTime(modTime)
 
 		w, err := zw.CreateHeader(h)
@@ -47,9 +45,32 @@ func (s *ChatService) ExportTrainingSamplesAsSkills(botID string) ([]byte, strin
 			_ = zw.Close()
 			return nil, "", 0, err
 		}
-		if _, err := w.Write([]byte(renderTrainingSampleAsSkill(bot, sample))); err != nil {
+		if _, err := w.Write([]byte(renderCombinedMemorySkill(bot, memorySummary, samples))); err != nil {
 			_ = zw.Close()
 			return nil, "", 0, err
+		}
+	} else {
+		for i, sample := range samples {
+			entryName := fmt.Sprintf("%s/%03d-%s.md", folderName, i+1, buildTrainingSkillFilename(sample, i+1))
+			h := &zip.FileHeader{
+				Name:   entryName,
+				Method: zip.Deflate,
+			}
+			modTime := sample.CreatedAt
+			if modTime.IsZero() {
+				modTime = time.Now()
+			}
+			h.SetModTime(modTime)
+
+			w, err := zw.CreateHeader(h)
+			if err != nil {
+				_ = zw.Close()
+				return nil, "", 0, err
+			}
+			if _, err := w.Write([]byte(renderTrainingSampleAsSkill(bot, sample))); err != nil {
+				_ = zw.Close()
+				return nil, "", 0, err
+			}
 		}
 	}
 
@@ -57,6 +78,69 @@ func (s *ChatService) ExportTrainingSamplesAsSkills(botID string) ([]byte, strin
 		return nil, "", 0, err
 	}
 	return buf.Bytes(), downloadName, len(samples), nil
+}
+
+func renderCombinedMemorySkill(bot domain.BotProfile, memorySummary string, samples []domain.TrainingSample) string {
+	var b strings.Builder
+	b.WriteString("# MemoryDistilledSkill\n\n")
+	b.WriteString("来源：训练数据导出 + 蒸馏记忆合并为单个 Skill\n")
+	if strings.TrimSpace(bot.Name) != "" {
+		b.WriteString("机器人：")
+		b.WriteString(strings.TrimSpace(bot.Name))
+		if strings.TrimSpace(bot.ID) != "" {
+			b.WriteString(" (")
+			b.WriteString(strings.TrimSpace(bot.ID))
+			b.WriteString(")")
+		}
+		b.WriteString("\n")
+	} else if strings.TrimSpace(bot.ID) != "" {
+		b.WriteString("机器人 ID：")
+		b.WriteString(strings.TrimSpace(bot.ID))
+		b.WriteString("\n")
+	}
+	b.WriteString("导出时间：")
+	b.WriteString(time.Now().Format(time.RFC3339))
+	b.WriteString("\n\n")
+	b.WriteString("## 记忆摘要\n")
+	b.WriteString(strings.TrimSpace(memorySummary))
+	b.WriteString("\n\n")
+	b.WriteString("## 使用方式\n")
+	b.WriteString("当用户意图相似时，优先参考下方蒸馏记忆和历史对话，总结长期偏好与表达风格，按需改写，不要逐字复述。\n")
+
+	for i, sample := range samples {
+		b.WriteString("\n## 训练样本 ")
+		b.WriteString(fmt.Sprintf("%d", i+1))
+		b.WriteString("\n")
+		if summary := strings.TrimSpace(sample.Summary); summary != "" {
+			b.WriteString("summary: ")
+			b.WriteString(summary)
+			b.WriteString("\n")
+		}
+		if len(sample.Tags) > 0 {
+			b.WriteString("tags: ")
+			b.WriteString(strings.Join(sample.Tags, ", "))
+			b.WriteString("\n")
+		}
+		for j, turn := range sample.Turns {
+			b.WriteString("\n### 对话 ")
+			b.WriteString(fmt.Sprintf("%d", j+1))
+			b.WriteString("\n\n用户：\n")
+			user := strings.TrimSpace(turn.UserMessage.Content)
+			if user == "" {
+				user = "（空）"
+			}
+			b.WriteString(user)
+			b.WriteString("\n\n助手：\n")
+			assistant := strings.TrimSpace(turn.AssistantMessage.Content)
+			if assistant == "" {
+				assistant = "（空）"
+			}
+			b.WriteString(assistant)
+			b.WriteString("\n")
+		}
+	}
+
+	return strings.TrimSpace(b.String()) + "\n"
 }
 
 func buildTrainingSkillFilename(sample domain.TrainingSample, index int) string {

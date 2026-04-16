@@ -204,13 +204,15 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.service.ListBots())
 	case http.MethodPost:
 		var input struct {
-			ID           string `json:"id"`
-			Name         string `json:"name"`
-			Personality  string `json:"personality"`
-			Gender       string `json:"gender"`
-			AvatarURL    string `json:"avatarUrl"`
-			ModelType    string `json:"modelType"`
-			SystemPrompt string `json:"systemPrompt"`
+			ID            string `json:"id"`
+			Name          string `json:"name"`
+			Personality   string `json:"personality"`
+			Gender        string `json:"gender"`
+			AvatarURL     string `json:"avatarUrl"`
+			ModelProvider string `json:"modelProvider"`
+			ModelBaseURL  string `json:"modelBaseUrl"`
+			ModelType     string `json:"modelType"`
+			SystemPrompt  string `json:"systemPrompt"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
@@ -223,13 +225,15 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 			input.ID = "bot-" + time.Now().Format("20060102150405")
 		}
 		bot, err := s.service.UpsertBot(domain.BotProfile{
-			ID:           input.ID,
-			Name:         input.Name,
-			Personality:  input.Personality,
-			Gender:       input.Gender,
-			AvatarURL:    input.AvatarURL,
-			ModelType:    input.ModelType,
-			SystemPrompt: input.SystemPrompt,
+			ID:            input.ID,
+			Name:          input.Name,
+			Personality:   input.Personality,
+			Gender:        input.Gender,
+			AvatarURL:     input.AvatarURL,
+			ModelProvider: strings.TrimSpace(input.ModelProvider),
+			ModelBaseURL:  strings.TrimSpace(input.ModelBaseURL),
+			ModelType:     input.ModelType,
+			SystemPrompt:  input.SystemPrompt,
 		})
 		if err != nil {
 			handleStoreError(w, err)
