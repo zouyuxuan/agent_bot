@@ -266,6 +266,22 @@ func (s *ChatService) FinalizeWalletPublish(ctx context.Context, botID string, p
 		explorerTx = explorer + "/tx/" + strings.TrimSpace(txHash)
 	}
 	ref := "0g://storage/root/" + root.Hex() + "?tx=" + strings.TrimSpace(txHash)
+	publishedAt := time.Now()
+
+	if err := s.updateTrainingSamplesByID(botID, sampleIDs, func(sample *domain.TrainingSample) {
+		applyTrainingSamplePublishState(sample, trainingSamplePublishState{
+			StoredOn0G:      true,
+			StorageRef:      ref,
+			TxHash:          strings.TrimSpace(txHash),
+			RootHash:        root.Hex(),
+			ExplorerTxURL:   explorerTx,
+			UploadPending:   true,
+			UploadCompleted: false,
+			PublishedAt:     publishedAt,
+		})
+	}); err != nil {
+		return domain.PublishResult{}, err
+	}
 
 	out := domain.PublishResult{
 		BotID:            botID,
@@ -279,7 +295,7 @@ func (s *ChatService) FinalizeWalletPublish(ctx context.Context, botID string, p
 		TxSuccess:        success,
 		UploadPending:    true,
 		UploadCompleted:  false,
-		PublishedAt:      time.Now(),
+		PublishedAt:      publishedAt,
 	}
 
 	if err := s.pubs.SaveTrainingPublish(ctx, out); err != nil {
@@ -383,22 +399,19 @@ func (s *ChatService) completeWalletTrainingUpload(botID, txHash string, root co
 	}
 
 	ref := "0g://storage/root/" + root.Hex() + "?tx=" + strings.TrimSpace(txHash)
-	current, err := s.store.ListTrainingSamples(botID)
-	if err != nil {
-		logrus.WithError(err).Warn("async upload: failed to list samples")
+	if err := s.updateTrainingSamplesByID(botID, sampleIDs, func(sample *domain.TrainingSample) {
+		applyTrainingSamplePublishState(sample, trainingSamplePublishState{
+			StoredOn0G:      true,
+			StorageRef:      ref,
+			TxHash:          strings.TrimSpace(txHash),
+			RootHash:        root.Hex(),
+			UploadPending:   false,
+			UploadCompleted: true,
+		})
+	}); err != nil {
+		logrus.WithError(err).Warn("async upload: failed to update training samples")
 		return
 	}
-	idSet := map[string]bool{}
-	for _, id := range sampleIDs {
-		idSet[id] = true
-	}
-	for i := range current {
-		if idSet[current[i].ID] {
-			current[i].StoredOn0G = true
-			current[i].StorageRef = ref
-		}
-	}
-	_ = s.store.UpdateTrainingSamples(botID, current)
 }
 
 func discoverZgsNodesViaIndexer(ctx context.Context) ([]string, error) {

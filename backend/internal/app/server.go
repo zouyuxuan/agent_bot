@@ -266,6 +266,10 @@ func (s *Server) handleBotRoutes(w http.ResponseWriter, r *http.Request) {
 			s.handleSkills(w, r, botID, parts[2:])
 			return
 		}
+		if len(parts) >= 2 && parts[1] == "datasets" {
+			s.handleDatasetsTools(w, r, botID, parts[2:])
+			return
+		}
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}

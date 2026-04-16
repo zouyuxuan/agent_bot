@@ -357,11 +357,135 @@ button.primary {
   gap: 12px;
 }
 
+.memory-overview {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.memory-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(47, 166, 255, 0.14);
+}
+
+.memory-card strong,
+.memory-card span {
+  display: block;
+}
+
+.memory-card span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.memory-card strong {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.memory-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.distill-box {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(47, 166, 255, 0.14);
+  background: rgba(255, 255, 255, 0.74);
+  display: grid;
+  gap: 10px;
+}
+
+.distill-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.distill-result {
+  display: grid;
+  gap: 10px;
+}
+
+.distill-empty {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px dashed rgba(0, 122, 92, 0.18);
+}
+
+.distill-section {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(0, 122, 92, 0.14);
+  display: grid;
+  gap: 8px;
+}
+
+.distill-section strong {
+  display: block;
+}
+
+.distill-profile-list,
+.distill-rules-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  display: grid;
+  gap: 6px;
+}
+
+.distill-profile-list li,
+.distill-rules-list li {
+  line-height: 1.45;
+}
+
+.distill-skills {
+  display: grid;
+  gap: 10px;
+}
+
+.distill-skill-card {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(25, 198, 176, 0.16);
+  display: grid;
+  gap: 8px;
+}
+
+.distill-skill-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: var(--muted);
+}
+
 .dataset-item {
   padding: 14px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(0, 122, 92, 0.14);
+}
+
+.dataset-item .row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-item strong {
+  display: block;
 }
 
 .dataset-item small {
@@ -370,10 +494,61 @@ button.primary {
   color: var(--muted);
 }
 
+.dataset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dataset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(25, 198, 176, 0.1);
+  border: 1px solid rgba(25, 198, 176, 0.16);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dataset-pill.pending {
+  background: rgba(255, 193, 7, 0.12);
+  border-color: rgba(255, 193, 7, 0.22);
+}
+
+.dataset-pill.verified {
+  background: rgba(0, 201, 131, 0.1);
+  border-color: rgba(0, 201, 131, 0.2);
+}
+
+.dataset-proof {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.dataset-proof a {
+  color: var(--accent2);
+  text-decoration: none;
+}
+
+.dataset-proof a:hover {
+  text-decoration: underline;
+}
+
 .publish-result {
   min-height: 22px;
   color: var(--text);
   word-break: break-word;
+}
+
+.dataset-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 #zgs-nodes {
@@ -381,7 +556,7 @@ button.primary {
 }
 
 #publish-btn {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .skills-box {
@@ -566,6 +741,10 @@ button.primary {
     max-height: 320px;
     overflow: auto;
   }
+
+  .memory-overview {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 520px) {
@@ -580,5 +759,11 @@ button.primary {
 
   .bubble {
     max-width: 100%;
+  }
+
+  .memory-overview,
+  .dataset-actions,
+  .distill-actions {
+    grid-template-columns: 1fr;
   }
 }

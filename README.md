@@ -1,6 +1,6 @@
 # AI Bot Chain Studio
 
-一个基于 Go 后端和原生 JavaScript 前端的在线聊天机器人项目雏形。用户可以在前端自定义机器人性格、性别、头像、模型类型与系统提示词；随着持续互动，系统会把对话沉淀为训练样本，并通过 0G 存储适配层发布训练数据。
+一个基于 Go 后端和原生 JavaScript 前端构建的 0G Agent Memory Layer 项目。用户可以自定义机器人性格、系统提示词与技能层；随着持续互动，系统会把对话沉淀为可验证的长期记忆，再导出为 Skills、发布到 0G，并在多 Agent 场景中复用。
 
 ## 项目结构
 
@@ -21,9 +21,12 @@
 
 - 创建和管理聊天机器人资料
 - 聊天过程中累积成长值
-- 自动把每轮对话转换为训练样本
-- 查看训练样本列表
+- 自动把每轮对话转换为长期记忆样本
+- 查看训练样本与样本级别的 0G proof 信息
+- 使用 0G Compute 对长期记忆做蒸馏，自动提炼用户画像、稳定规则与 Skills 草稿
+- 一键将训练样本导出为 Skills 压缩包，便于复用、分享或重新导入
 - 一键将训练样本发布到 0G（已接入 0G Storage Go SDK；未配置密钥时自动降级为本地模拟引用）
+- 将训练记忆转化为 Skills，并作为可迁移的 Agent 资产层管理
 - 后端可直接托管前端静态页面
 
 ## 启动方式
@@ -60,6 +63,9 @@ go run ./backend/cmd/server
 - `POST /api/bots/:id/chat` 发送消息并记录训练数据
 - `GET /api/bots/:id/memories` 查看历史对话
 - `GET /api/bots/:id/datasets` 查看训练样本
+- `GET /api/bots/:id/datasets/export_skills` 将训练样本导出为 Skills ZIP
+- `POST /api/bots/:id/datasets/distill` 使用 0G Compute 蒸馏训练记忆
+- `POST /api/bots/:id/datasets/distill/save` 将蒸馏得到的候选 Skills 保存到当前机器人
 - `POST /api/bots/:id/publish` 发布训练数据到 0G
 - `POST /api/x402/fetch` 通过 x402 协议发起“需要付费”的 HTTP 请求（buyer 侧自动处理 402 支付挑战）
 
@@ -106,3 +112,9 @@ go run ./backend/cmd/server
 - `ZERO_G_RPC_TIMEOUT_MS` 默认 `30000`，ZGS/EVM RPC 单次请求超时（毫秒）
 - `ZERO_G_ZGS_PROBE_TIMEOUT_MS` 默认 `3500`，发布前探测 ZGS 节点可达性超时（毫秒）
 
+### 0G Compute 环境变量
+
+- `ZERO_G_COMPUTE_API_KEY` 0G Compute 的 API Key
+- `ZERO_G_COMPUTE_SERVICE_URL` 0G Compute 的 service URL 或 OpenAI-compatible base URL
+- `ZERO_G_COMPUTE_MODEL` 默认 `THUDM/GLM-5-FP8`
+- `ZERO_G_COMPUTE_TIMEOUT_MS` 默认 `90000`

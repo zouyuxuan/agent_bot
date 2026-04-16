@@ -27,24 +27,30 @@ type ConversationTurn struct {
 }
 
 type TrainingSample struct {
-	ID         string             `json:"id"`
-	BotID      string             `json:"botId"`
-	Summary    string             `json:"summary"`
-	Turns      []ConversationTurn `json:"turns"`
-	Tags       []string           `json:"tags"`
-	StoredOn0G bool               `json:"storedOn0G"`
-	StorageRef string             `json:"storageRef"`
-	CreatedAt  time.Time          `json:"createdAt"`
+	ID              string             `json:"id"`
+	BotID           string             `json:"botId"`
+	Summary         string             `json:"summary"`
+	Turns           []ConversationTurn `json:"turns"`
+	Tags            []string           `json:"tags"`
+	StoredOn0G      bool               `json:"storedOn0G"`
+	StorageRef      string             `json:"storageRef"`
+	TxHash          string             `json:"txHash,omitempty"`
+	RootHash        string             `json:"rootHash,omitempty"`
+	ExplorerTxURL   string             `json:"explorerTxUrl,omitempty"`
+	UploadPending   bool               `json:"uploadPending,omitempty"`
+	UploadCompleted bool               `json:"uploadCompleted,omitempty"`
+	PublishedAt     time.Time          `json:"publishedAt,omitempty"`
+	CreatedAt       time.Time          `json:"createdAt"`
 }
 
 type Skill struct {
-	ID          string    `json:"id"`
-	BotID       string    `json:"botId"`
-	Name        string    `json:"name"`
-	Filename    string    `json:"filename"`
-	ContentType string    `json:"contentType"`
-	Content     string    `json:"content"`
-	SizeBytes   int       `json:"sizeBytes"`
+	ID          string `json:"id"`
+	BotID       string `json:"botId"`
+	Name        string `json:"name"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"contentType"`
+	Content     string `json:"content"`
+	SizeBytes   int    `json:"sizeBytes"`
 
 	StoredOn0G bool   `json:"storedOn0G"`
 	StorageRef string `json:"storageRef"`
@@ -71,6 +77,25 @@ type PublishResult struct {
 	UploadPending    bool      `json:"uploadPending,omitempty"`
 	UploadCompleted  bool      `json:"uploadCompleted,omitempty"`
 	PublishedAt      time.Time `json:"publishedAt"`
+}
+
+type DistilledSkillDraft struct {
+	Name     string `json:"name"`
+	Filename string `json:"filename,omitempty"`
+	Content  string `json:"content"`
+}
+
+type MemoryDistillationResult struct {
+	BotID           string                `json:"botId"`
+	Source          string                `json:"source"`
+	Model           string                `json:"model"`
+	SampleCount     int                   `json:"sampleCount"`
+	SampleIDs       []string              `json:"sampleIds,omitempty"`
+	MemorySummary   string                `json:"memorySummary"`
+	UserProfile     map[string]string     `json:"userProfile,omitempty"`
+	StableRules     []string              `json:"stableRules,omitempty"`
+	CandidateSkills []DistilledSkillDraft `json:"candidateSkills,omitempty"`
+	GeneratedAt     time.Time             `json:"generatedAt"`
 }
 
 // X402ToolResult represents the result of a frontend-executed x402 paid HTTP call.

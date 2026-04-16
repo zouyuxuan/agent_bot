@@ -59,10 +59,15 @@ func (c *OpenAICompatClient) Chat(ctx context.Context, cfg Config, messages []Me
 		baseURL = "https://api.openai.com"
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
-	if !strings.HasSuffix(baseURL, "/v1") {
-		baseURL = baseURL + "/v1"
+	endpoint := baseURL
+	switch {
+	case strings.HasSuffix(endpoint, "/chat/completions"):
+		// Use the explicit chat completions endpoint as-is.
+	case strings.HasSuffix(endpoint, "/v1") || strings.Contains(endpoint, "/v1/"):
+		endpoint = endpoint + "/chat/completions"
+	default:
+		endpoint = endpoint + "/v1/chat/completions"
 	}
-	endpoint := baseURL + "/chat/completions"
 
 	type requestBody struct {
 		Model       string    `json:"model"`

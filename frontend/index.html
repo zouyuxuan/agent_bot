@@ -14,7 +14,7 @@
           <p class="eyebrow">Bot Studio</p>
           <div class="brand">
             <img class="brand-logo" src="./assets/logo.svg" alt="logo" />
-            <h1>链上成长型 AI 聊天机器人</h1>
+            <h1>0G Agent Memory Layer Studio</h1>
           </div>
         </div>
 
@@ -94,7 +94,7 @@
             <label for="debug-skills" class="debug-toggle-label">调试：显示本轮使用的 Skills</label>
           </div>
           <p class="hint">提示：只需选择机器人“默认模型 ID”并填写 API Key，即可直接调用对应大模型；无需再手动配置 Provider/Base URL。</p>
-          <p class="hint">如果回复经常“中途断掉”，通常是模型输出长度受限；当前前端已将单次最大输出提高到 2048 tokens。</p>
+          <p class="hint">当前前端已将单次最大输出提高到 2048 tokens。</p>
         </div>
       </aside>
 
@@ -122,19 +122,31 @@
             提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
           </p>
           <p class="hint">
-            如果启用了 <code>evm_transfer</code> Skill，消息中出现“转账/支付/pay/transfer”且包含地址、金额、链ID时，会先显示转账摘要并触发 MetaMask 交易确认。
+            每轮对话都会沉淀成 Agent Memory；你可以把这些记忆导出成 Skills，再发布到 0G，构建可拥有、可迁移的 AI 资产层。
           </p>
         </div>
       </main>
 
       <aside class="panel dataset-panel">
         <div class="panel-header">
-          <p class="eyebrow">Training</p>
-          <h2>训练样本与 0G 存储</h2>
+          <p class="eyebrow">Memory Layer</p>
+          <h2>Agent Memory Layer</h2>
+        </div>
+        <p class="hint">把每轮对话沉淀成用户可拥有、可导出、可验证、可迁移的 Agent Memory 与 Skills。</p>
+        <div id="memory-overview" class="memory-overview"></div>
+        <div class="distill-box">
+          <div class="section-title">0G Compute Memory Distillation</div>
+          <p class="hint">使用 0G Compute 对原始记忆做蒸馏，自动提炼长期偏好、稳定规则与可复用 Skills 草稿。</p>
+          <div class="distill-actions">
+            <button id="memory-distill-run" class="secondary" type="button">0G Compute 蒸馏记忆</button>
+            <button id="memory-distill-save" class="secondary" type="button">保存候选 Skills</button>
+          </div>
+          <p id="memory-distill-status" class="hint"></p>
+          <div id="memory-distill-result" class="distill-result"></div>
         </div>
 
         <div class="skills-box">
-          <div class="section-title">Skills（从 GitHub 拉取并发布到 0G）</div>
+          <div class="section-title">Skill Layer（导入 / 导出 / 发布）</div>
           <div class="skills-import">
             <label>
               本地 Skills 文件
@@ -203,7 +215,10 @@
           ZGS 节点（可选）
           <textarea id="zgs-nodes" rows="3" placeholder="建议留空：后端将通过 0G indexer 自动发现节点；如需手动指定则填入 URL（逗号分隔）。如果出现 no reachable ZGS nodes，请清空此处再试。"></textarea>
         </label>
-        <button id="publish-btn">发布训练数据到 0G</button>
+        <div class="dataset-actions">
+          <button id="publish-btn">发布训练数据到 0G</button>
+          <button id="dataset-export-skills" class="secondary" type="button">导出训练数据为 Skills</button>
+        </div>
         <p id="publish-result" class="publish-result"></p>
         <div id="dataset-list" class="dataset-list"></div>
       </aside>

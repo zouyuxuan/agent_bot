@@ -4,6 +4,8 @@ const state = {
   activeBotId: "",
   activeBot: null,
   bots: [],
+  datasets: [],
+  distillation: null,
   skills: [],
   selectedSkillFolders: new Set(),
 };
@@ -18,7 +20,13 @@ const activeBotName = document.querySelector("#active-bot-name");
 const growthScore = document.querySelector("#growth-score");
 const llmStatus = document.querySelector("#llm-status");
 const datasetList = document.querySelector("#dataset-list");
+const memoryOverview = document.querySelector("#memory-overview");
 const publishBtn = document.querySelector("#publish-btn");
+const datasetExportSkillsBtn = document.querySelector("#dataset-export-skills");
+const memoryDistillRunBtn = document.querySelector("#memory-distill-run");
+const memoryDistillSaveBtn = document.querySelector("#memory-distill-save");
+const memoryDistillStatus = document.querySelector("#memory-distill-status");
+const memoryDistillResult = document.querySelector("#memory-distill-result");
 const publishResult = document.querySelector("#publish-result");
 const zgsNodesInput = document.querySelector("#zgs-nodes");
 const skillsSummary = document.querySelector("#skills-summary");
@@ -73,6 +81,36 @@ function syncSkillSelectionActions() {
   }
 }
 
+function syncDatasetActions() {
+  const count = Array.isArray(state.datasets) ? state.datasets.length : 0;
+  if (publishBtn) {
+    publishBtn.disabled = count === 0;
+  }
+  if (datasetExportSkillsBtn) {
+    datasetExportSkillsBtn.disabled = count === 0;
+    datasetExportSkillsBtn.textContent = count > 0 ? `导出训练数据为 Skills（${count}）` : "导出训练数据为 Skills";
+  }
+  syncDistillationActions();
+}
+
+function syncDistillationActions() {
+  const datasetCount = Array.isArray(state.datasets) ? state.datasets.length : 0;
+  const drafts = Array.isArray(state.distillation?.candidateSkills) ? state.distillation.candidateSkills : [];
+  const saved = !!state.distillation?.saved;
+  if (memoryDistillRunBtn) {
+    memoryDistillRunBtn.disabled = datasetCount === 0;
+    memoryDistillRunBtn.textContent = datasetCount > 0 ? `0G Compute 蒸馏记忆（${Math.min(datasetCount, 12)}）` : "0G Compute 蒸馏记忆";
+  }
+  if (memoryDistillSaveBtn) {
+    memoryDistillSaveBtn.disabled = drafts.length === 0 || saved;
+    if (saved) {
+      memoryDistillSaveBtn.textContent = `已保存候选 Skills（${drafts.length}）`;
+    } else {
+      memoryDistillSaveBtn.textContent = drafts.length > 0 ? `保存候选 Skills（${drafts.length}）` : "保存候选 Skills";
+    }
+  }
+}
+
 function pruneSelectedSkillFolders(folderSet) {
   for (const folder of Array.from(state.selectedSkillFolders)) {
     if (!folderSet.has(folder)) state.selectedSkillFolders.delete(folder);
@@ -101,6 +139,164 @@ function findDuplicateSkillFilenames(names) {
   return duplicates;
 }
 
+function readAttachmentFilename(contentDisposition, fallback) {
+  const raw = String(contentDisposition || "").trim();
+  if (!raw) return fallback;
+
+  const utf8Match = raw.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const plainMatch = raw.match(/filename\s*=\s*\"?([^\";]+)\"?/i);
+  if (plainMatch?.[1]) {
+    return plainMatch[1];
+  }
+  return fallback;
+}
+
+function downloadBlobFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = String(filename || "download");
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "未记录";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  try {
+    return d.toLocaleString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return d.toISOString();
+  }
+}
+
+function getCurrentProofTimeLabel() {
+  return formatDateTime(new Date().toISOString());
+}
+
+function shortenMiddle(value, head = 10, tail = 8) {
+  const s = String(value || "").trim();
+  if (!s) return "";
+  if (s.length <= head + tail + 3) return s;
+  return `${s.slice(0, head)}...${s.slice(-tail)}`;
+}
+
+function renderMemoryOverview() {
+  if (!memoryOverview) return;
+  const datasets = Array.isArray(state.datasets) ? state.datasets : [];
+  const skills = Array.isArray(state.skills) ? state.skills : [];
+  const verifiedMemories = datasets.filter((s) => s?.storedOn0G).length;
+  const pendingMemories = datasets.filter((s) => s?.uploadPending).length;
+  const latestProof = verifiedMemories > 0 || pendingMemories > 0 ? getCurrentProofTimeLabel() : "未上链";
+
+  const cards = [
+    { label: "Memory Samples", value: String(datasets.length), detail: "每轮对话都会沉淀为长期记忆" },
+    { label: "Verifiable on 0G", value: String(verifiedMemories), detail: pendingMemories > 0 ? `还有 ${pendingMemories} 条同步中` : "可追溯 root / tx / explorer" },
+    { label: "Skill Assets", value: String(skills.length), detail: "支持导入、导出、发布与复用" },
+    { label: "Latest Proof", value: latestProof, detail: "从 Chat -> Memory -> Skills -> 0G" },
+  ];
+
+  memoryOverview.innerHTML = cards
+    .map(
+      (card) => `
+        <article class="memory-card">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <small>${escapeHtml(card.detail)}</small>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function resetDistillationState() {
+  state.distillation = null;
+  if (memoryDistillStatus) memoryDistillStatus.textContent = "";
+  renderDistillationResult();
+}
+
+function stringifyDistillValue(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v || "").trim()).filter(Boolean).join(", ");
+  return String(value || "").trim();
+}
+
+function renderDistillationResult() {
+  if (!memoryDistillResult) return;
+  syncDistillationActions();
+
+  const result = state.distillation;
+  if (!result) {
+    memoryDistillResult.innerHTML = `
+      <div class="distill-empty">
+        <small>点击“0G Compute 蒸馏记忆”，把原始对话记忆整理成长期偏好、稳定规则和可复用 Skills 草稿。</small>
+      </div>
+    `;
+    return;
+  }
+
+  const profileEntries = Object.entries(result.userProfile || {})
+    .map(([key, value]) => {
+      return `<li><strong>${escapeHtml(key)}：</strong>${escapeHtml(stringifyDistillValue(value) || "-")}</li>`;
+    })
+    .join("");
+
+  const rules = Array.isArray(result.stableRules)
+    ? result.stableRules.map((rule) => `<li>${escapeHtml(String(rule || "").trim())}</li>`).join("")
+    : "";
+
+  const skills = Array.isArray(result.candidateSkills)
+    ? result.candidateSkills
+        .map((skill) => {
+          return `
+            <article class="distill-skill-card">
+              <strong>${escapeHtml(skill.name || "未命名 Skill")}</strong>
+              <small>${escapeHtml(skill.filename || "distilled/skill.md")}</small>
+              <pre>${escapeHtml(String(skill.content || "").trim())}</pre>
+            </article>
+          `;
+        })
+        .join("")
+    : "";
+
+  memoryDistillResult.innerHTML = `
+    <section class="distill-section">
+      <strong>记忆摘要</strong>
+      <small>${escapeHtml(result.memorySummary || "暂无摘要")}</small>
+      <small>来源：${escapeHtml(result.source || "0G Compute")} · 模型：${escapeHtml(result.model || "-")} · 样本数：${escapeHtml(String(result.sampleCount || 0))}</small>
+    </section>
+    <section class="distill-section">
+      <strong>用户画像</strong>
+      ${profileEntries ? `<ul class="distill-profile-list">${profileEntries}</ul>` : `<small>暂无结构化画像</small>`}
+    </section>
+    <section class="distill-section">
+      <strong>稳定规则</strong>
+      ${rules ? `<ul class="distill-rules-list">${rules}</ul>` : `<small>暂无稳定规则</small>`}
+    </section>
+    <section class="distill-section">
+      <strong>候选 Skills</strong>
+      <div class="distill-skills">${skills || `<small>暂无 Skills 草稿</small>`}</div>
+    </section>
+  `;
+}
+
 if (skillsList) {
   skillsList.addEventListener("change", (e) => {
     const target = e.target;
@@ -118,6 +314,9 @@ refreshBotsBtn.addEventListener("click", loadBots);
 botList.addEventListener("change", handleBotSwitch);
 chatForm.addEventListener("submit", handleChatSubmit);
 publishBtn.addEventListener("click", publishDatasets);
+datasetExportSkillsBtn?.addEventListener("click", exportDatasetsAsSkills);
+memoryDistillRunBtn?.addEventListener("click", distillMemoriesWith0GCompute);
+memoryDistillSaveBtn?.addEventListener("click", saveDistilledSkillsToLibrary);
 skillsLocalUploadBtn?.addEventListener("click", uploadLocalSkills);
 skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillFolders);
 skillsDeleteSelectedBtn?.addEventListener("click", deleteSelectedSkills);
@@ -128,6 +327,10 @@ walletConnectBtn?.addEventListener("click", handleWalletButtonClick);
 x402Send?.addEventListener("click", sendX402Test);
 x402Toggle?.addEventListener("click", toggleX402Panel);
 
+syncDatasetActions();
+syncSkillSelectionActions();
+renderMemoryOverview();
+renderDistillationResult();
 loadBots();
 restoreZgsNodes();
 renderWalletStatus();
@@ -198,13 +401,14 @@ async function refreshSkills() {
 
 async function refreshDatasets() {
   if (!state.activeBotId) {
+    state.datasets = [];
     renderDatasets([]);
     return [];
   }
   const datasets = await fetchJson(`${apiBase}/api/bots/${state.activeBotId}/datasets`);
   const out = Array.isArray(datasets) ? datasets : [];
   renderDatasets(out);
-  return out;
+  return state.datasets;
 }
 
 async function loadBots() {
@@ -224,6 +428,7 @@ async function loadBots() {
     renderActiveBot();
     renderDatasets([]);
     renderSkills([]);
+    resetDistillationState();
     return;
   }
   state.bots = Array.isArray(bots) ? bots : [];
@@ -237,6 +442,7 @@ async function loadBots() {
     state.activeBotId = "";
     renderActiveBot();
     renderDatasets([]);
+    resetDistillationState();
     return;
   }
 
@@ -278,6 +484,7 @@ async function handleBotSubmit(event) {
 
 async function handleBotSwitch() {
   state.activeBotId = botList.value;
+  resetDistillationState();
   await refreshActiveBotViews();
 }
 
@@ -286,6 +493,7 @@ async function refreshActiveBotViews() {
     renderActiveBot();
     renderDatasets([]);
     renderSkills([]);
+    resetDistillationState();
     return;
   }
 
@@ -326,17 +534,54 @@ function renderMemories(memories) {
 }
 
 function renderDatasets(samples) {
+  state.datasets = Array.isArray(samples) ? samples : [];
+  syncDatasetActions();
+  renderMemoryOverview();
   datasetList.innerHTML = "";
-  samples
+  if (!state.datasets.length) {
+    datasetList.innerHTML = `
+      <article class="dataset-item">
+        <strong>暂无 Agent Memory</strong>
+        <small>开始对话后，系统会自动把每轮交互沉淀为可导出、可验证、可迁移的记忆资产。</small>
+      </article>
+    `;
+    return;
+  }
+
+  state.datasets
     .slice()
     .reverse()
     .forEach((sample) => {
+      const createdAt = formatDateTime(sample.createdAt);
+      const publishedAt = sample.storedOn0G || sample.uploadPending ? getCurrentProofTimeLabel() : "";
+      const statusLabel = sample.uploadPending ? "链上已确认，节点同步中" : sample.storedOn0G ? "已验证上链" : "本地记忆";
+      const statusClass = sample.uploadPending ? "pending" : sample.storedOn0G ? "verified" : "";
+      const tags = Array.isArray(sample.tags) ? sample.tags.filter(Boolean) : [];
+      const pills = [
+        `<span class="dataset-pill ${statusClass}">${escapeHtml(statusLabel)}</span>`,
+        `<span class="dataset-pill">ID: ${escapeHtml(shortenMiddle(sample.id || "-", 12, 6) || "-")}</span>`,
+        `<span class="dataset-pill">创建: ${escapeHtml(createdAt)}</span>`,
+      ];
+      if (publishedAt) pills.push(`<span class="dataset-pill verified">证明时间: ${escapeHtml(publishedAt)}</span>`);
+      tags.slice(0, 4).forEach((tag) => pills.push(`<span class="dataset-pill">${escapeHtml(tag)}</span>`));
+
+      const proofSummary = sample.uploadPending
+        ? "已提交到 0G，正在等待节点同步完成。"
+        : sample.storedOn0G
+          ? "已同步到 0G，可继续导出为 Skills 或在多 Agent 场景中复用。"
+          : "尚未发布到 0G，当前仅保存在本地 Memory Layer。";
+
       const div = document.createElement("article");
       div.className = "dataset-item";
       div.innerHTML = `
-        <strong>${sample.summary}</strong>
-        <small>标签：${(sample.tags || []).join(", ") || "无"} </small>
-        <small>状态：${sample.storedOn0G ? `已上链 ${sample.storageRef}` : "待发布到 0G"}</small>
+        <div class="row">
+          <div>
+            <strong>${escapeHtml(sample.summary || "未命名记忆样本")}</strong>
+            <small>这条记忆可被导出为 Skills，并在多 Agent 场景中复用。</small>
+          </div>
+        </div>
+        <div class="dataset-pills">${pills.join("")}</div>
+        <div class="dataset-proof"><small>${escapeHtml(proofSummary)}</small></div>
       `;
       datasetList.append(div);
     });
@@ -363,6 +608,7 @@ function renderSkills(skills) {
   const folderSet = new Set(Array.from(folderMap.keys()));
   pruneSelectedSkillFolders(folderSet);
   syncSkillSelectionActions();
+  renderMemoryOverview();
 
   const folders = Array.from(folderMap.entries())
     .map(([folder, items]) => {
@@ -964,6 +1210,7 @@ async function publishDatasets() {
         // Refresh dataset list after confirmed success.
         try {
           await refreshDatasets();
+          publishResult.textContent = "";
         } catch (e) {
           publishResult.textContent = `[错误] ${String(e?.message || e)}`;
         }
@@ -980,14 +1227,156 @@ async function publishDatasets() {
     return;
   }
 
-  const txPart = result.explorerTxUrl ? `tx: ${result.txHash}（可查：${result.explorerTxUrl}）` : `tx: ${result.txHash}`;
-  const locPart = (result.fileLocations || []).length ? `；nodes: ${(result.fileLocations || []).join(", ")}` : "";
-  publishResult.textContent = `已发布 ${result.sampleCount} 条；root: ${result.rootHash}；${txPart}${locPart}`;
-
   try {
     await refreshDatasets();
+    publishResult.textContent = "";
   } catch (e) {
     publishResult.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+async function exportDatasetsAsSkills() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  if (!Array.isArray(state.datasets) || state.datasets.length === 0) {
+    alert("暂无训练样本可导出");
+    return;
+  }
+
+  if (publishResult) {
+    publishResult.textContent = "正在导出训练数据为 Skills...";
+  }
+
+  let resp;
+  try {
+    resp = await fetch(`${apiBase}/api/bots/${state.activeBotId}/datasets/export_skills`, {
+      method: "GET",
+    });
+  } catch (e) {
+    if (publishResult) publishResult.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+
+  if (!resp.ok) {
+    let errMsg = resp.statusText;
+    try {
+      const data = await resp.json();
+      errMsg = data?.error || errMsg;
+    } catch {
+      // ignore
+    }
+    if (publishResult) publishResult.textContent = `[错误] ${errMsg}`;
+    return;
+  }
+
+  let blob;
+  try {
+    blob = await resp.blob();
+  } catch (e) {
+    if (publishResult) publishResult.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+
+  const fallbackName = `training-skills-${state.activeBotId || "export"}.zip`;
+  const filename = readAttachmentFilename(resp.headers.get("Content-Disposition"), fallbackName);
+  downloadBlobFile(blob, filename);
+  if (publishResult) {
+    publishResult.textContent = `已导出 ${state.datasets.length} 条训练样本为 Skills 压缩包：${filename}`;
+  }
+}
+
+async function distillMemoriesWith0GCompute() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  if (!Array.isArray(state.datasets) || state.datasets.length === 0) {
+    alert("暂无训练样本可蒸馏");
+    return;
+  }
+
+  state.distillation = null;
+  renderDistillationResult();
+  if (memoryDistillStatus) {
+    memoryDistillStatus.textContent = "正在通过 0G Compute 蒸馏记忆...";
+  }
+
+  let data;
+  try {
+    data = await fetchJsonTimed(
+      `${apiBase}/api/bots/${state.activeBotId}/datasets/distill`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxSamples: 12 }),
+      },
+      120000,
+    );
+  } catch (e) {
+    if (memoryDistillStatus) memoryDistillStatus.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+
+  state.distillation = {
+    ...data,
+    saved: false,
+  };
+  renderDistillationResult();
+  if (memoryDistillStatus) {
+    const count = Array.isArray(data?.candidateSkills) ? data.candidateSkills.length : 0;
+    memoryDistillStatus.textContent = `蒸馏完成：已基于 ${Number(data?.sampleCount || 0)} 条记忆生成 ${count} 个候选 Skills。`;
+  }
+}
+
+async function saveDistilledSkillsToLibrary() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  const drafts = Array.isArray(state.distillation?.candidateSkills) ? state.distillation.candidateSkills : [];
+  if (!drafts.length) {
+    alert("暂无可保存的候选 Skills");
+    return;
+  }
+  if (state.distillation?.saved) {
+    return;
+  }
+
+  if (memoryDistillStatus) {
+    memoryDistillStatus.textContent = "正在保存蒸馏后的 Skills...";
+  }
+
+  let data;
+  try {
+    data = await fetchJsonTimed(
+      `${apiBase}/api/bots/${state.activeBotId}/datasets/distill/save`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skills: drafts }),
+      },
+      45000,
+    );
+  } catch (e) {
+    if (memoryDistillStatus) memoryDistillStatus.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+
+  state.distillation = {
+    ...(state.distillation || {}),
+    saved: true,
+  };
+  renderDistillationResult();
+  try {
+    await refreshSkills();
+  } catch (e) {
+    if (memoryDistillStatus) memoryDistillStatus.textContent = `[错误] ${String(e?.message || e)}`;
+    return;
+  }
+  if (memoryDistillStatus) {
+    memoryDistillStatus.textContent = `已保存 ${Number(data?.count || drafts.length)} 个候选 Skills 到当前 Skill Layer。`;
   }
 }
 
@@ -1000,7 +1389,7 @@ async function tryResolveTxSuccessFromChain(txHash) {
       12000,
     );
     if (resp.ok && data?.status === "success") {
-      publishResult.textContent = `链上已成功：${data.txHash}（可查：${data.explorerTxUrl || ""}）。上传已完成或在后台继续同步。`;
+      publishResult.textContent = "链上已成功，上传已完成或在后台继续同步。";
       return true;
     }
 
@@ -1014,11 +1403,11 @@ async function tryResolveTxSuccessFromChain(txHash) {
         12000,
       );
       if (r2.ok && d2?.status === "success") {
-        publishResult.textContent = `链上已成功：${d2.txHash}（可查：${d2.explorerTxUrl || ""}）。上传已完成或在后台继续同步。`;
+        publishResult.textContent = "链上已成功，上传已完成或在后台继续同步。";
         return true;
       }
       if (r2.ok && d2?.status === "failed") {
-        publishResult.textContent = `[错误] 交易链上失败：${d2.txHash}（可查：${d2.explorerTxUrl || ""}）`;
+        publishResult.textContent = "[错误] 交易链上失败";
         return false;
       }
     }

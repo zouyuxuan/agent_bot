@@ -70,7 +70,10 @@ func (s *ChatService) Chat(ctx context.Context, botID, message string, llmCfg *l
 	now := time.Now()
 	x402Ctx := buildX402ContextFromFrontend(x402Results)
 	transferCtx := buildTransferContextFromFrontend(transferResults)
-	reply, llmUsed := s.generateReply(ctx, bot, message, llmCfg, skillCtx, x402Ctx, transferCtx)
+	reply, llmUsed := buildReplyFromFrontendToolResults(x402Results, transferResults)
+	if strings.TrimSpace(reply) == "" {
+		reply, llmUsed = s.generateReply(ctx, bot, message, llmCfg, skillCtx, x402Ctx, transferCtx)
+	}
 	turn := domain.ConversationTurn{
 		UserMessage: domain.ChatMessage{
 			Role:      "user",
@@ -198,9 +201,18 @@ func (s *ChatService) PublishTrainingData(ctx context.Context, botID string, zgs
 		return domain.PublishResult{}, err
 	}
 
+	publishedAt := time.Now()
 	for i := range samples {
-		samples[i].StoredOn0G = true
-		samples[i].StorageRef = info.Reference
+		applyTrainingSamplePublishState(&samples[i], trainingSamplePublishState{
+			StoredOn0G:      true,
+			StorageRef:      info.Reference,
+			TxHash:          info.TxHash,
+			RootHash:        info.RootHash,
+			ExplorerTxURL:   info.ExplorerTxURL,
+			UploadPending:   false,
+			UploadCompleted: true,
+			PublishedAt:     publishedAt,
+		})
 	}
 	if err := s.store.UpdateTrainingSamples(botID, samples); err != nil {
 		return domain.PublishResult{}, err
@@ -217,7 +229,7 @@ func (s *ChatService) PublishTrainingData(ctx context.Context, botID string, zgs
 		IndexerRPC:       info.IndexerRPC,
 		EvmRPC:           info.EvmRPC,
 		FileLocations:    info.FileLocations,
-		PublishedAt:      time.Now(),
+		PublishedAt:      publishedAt,
 	}
 
 	if err := s.pubs.SaveTrainingPublish(ctx, out); err != nil {
