@@ -27,6 +27,7 @@
 - 一键将训练样本导出为 Skills 压缩包；若已有蒸馏记忆，也可合并导出为单个 Skill
 - 一键将训练样本发布到 0G（已接入 0G Storage Go SDK；未配置密钥时自动降级为本地模拟引用）
 - 将训练记忆转化为 Skills，并作为可迁移的 Agent 资产层管理
+- 将训练数据与蒸馏记忆制作成 iNFT 资产，并发布到 0G 网络
 - 后端可直接托管前端静态页面
 
 ## 启动方式
@@ -71,6 +72,11 @@ go run ./backend/cmd/server
 - `GET /api/bots/:id/datasets/export_skills` 将训练样本导出为 Skills ZIP
 - `POST /api/bots/:id/datasets/distill` 使用 0G Compute 蒸馏训练记忆
 - `POST /api/bots/:id/datasets/distill/save` 将蒸馏得到的候选 Skills 保存到当前机器人
+- `GET /api/bots/:id/infts` 查看 iNFT 资产列表
+- `POST /api/bots/:id/infts/create_training` 将训练数据制作成 iNFT
+- `POST /api/bots/:id/infts/create_distilled` 将蒸馏记忆制作成 iNFT
+- `POST /api/bots/:id/infts/:inftId/publish_prepare` 准备 iNFT 发布交易
+- `POST /api/bots/:id/infts/:inftId/publish_finalize` 完成 iNFT 发布到 0G
 - `POST /api/bots/:id/publish` 发布训练数据到 0G
 - `POST /api/x402/fetch` 通过 x402 协议发起“需要付费”的 HTTP 请求（buyer 侧自动处理 402 支付挑战）
 

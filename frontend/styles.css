@@ -238,6 +238,16 @@ button.primary {
   color: var(--muted);
 }
 
+#inft-status {
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(47, 166, 255, 0.12);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .section-title {
   font-weight: 600;
 }
@@ -391,6 +401,33 @@ button.primary {
   display: block;
   margin-top: 6px;
   color: var(--muted);
+}
+
+.memory-card-wide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 6px;
+}
+
+.memory-card-wide span,
+.memory-card-wide strong,
+.memory-card-wide small {
+  margin: 0;
+}
+
+.memory-card-wide strong {
+  font-size: 18px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memory-card-wide small {
+  text-align: left;
+  margin-top: 0;
 }
 
 .distill-box {
@@ -681,6 +718,41 @@ button.primary {
   border-radius: 14px;
 }
 
+.inft-item {
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(47, 166, 255, 0.14);
+  display: grid;
+  gap: 8px;
+}
+
+.inft-item .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inft-item .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.inft-item button {
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 14px;
+}
+
+.inft-publish-btn {
+  min-width: 120px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .confirm-dialog.hidden {
   display: none;
 }
@@ -776,5 +848,14 @@ button.primary {
   .distill-actions,
   .confirm-dialog-actions {
     grid-template-columns: 1fr;
+  }
+
+  .memory-card-wide {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .memory-card-wide small {
+    text-align: left;
   }
 }

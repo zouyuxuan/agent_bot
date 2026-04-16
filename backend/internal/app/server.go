@@ -270,6 +270,10 @@ func (s *Server) handleBotRoutes(w http.ResponseWriter, r *http.Request) {
 			s.handleSkills(w, r, botID, parts[2:])
 			return
 		}
+		if len(parts) >= 2 && parts[1] == "infts" {
+			s.handleINFTs(w, r, botID, parts[2:])
+			return
+		}
 		if len(parts) >= 2 && parts[1] == "datasets" {
 			s.handleDatasetsTools(w, r, botID, parts[2:])
 			return
@@ -293,6 +297,8 @@ func (s *Server) handleBotRoutes(w http.ResponseWriter, r *http.Request) {
 		s.handlePublishFinalize(w, r, botID)
 	case "skills":
 		s.handleSkills(w, r, botID, nil)
+	case "infts":
+		s.handleINFTs(w, r, botID, nil)
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}

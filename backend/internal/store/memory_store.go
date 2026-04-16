@@ -15,6 +15,7 @@ type MemoryStore struct {
 	memories map[string][]domain.ConversationTurn
 	datasets map[string][]domain.TrainingSample
 	skills   map[string][]domain.Skill
+	infts    map[string][]domain.INFTAsset
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -23,6 +24,7 @@ func NewMemoryStore() *MemoryStore {
 		memories: make(map[string][]domain.ConversationTurn),
 		datasets: make(map[string][]domain.TrainingSample),
 		skills:   make(map[string][]domain.Skill),
+		infts:    make(map[string][]domain.INFTAsset),
 	}
 }
 
@@ -150,5 +152,51 @@ func (s *MemoryStore) UpdateSkills(botID string, skills []domain.Skill) error {
 		return ErrBotNotFound
 	}
 	s.skills[botID] = skills
+	return nil
+}
+
+func (s *MemoryStore) SaveINFT(botID string, inft domain.INFTAsset) (domain.INFTAsset, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.bots[botID]; !ok {
+		return domain.INFTAsset{}, ErrBotNotFound
+	}
+	s.infts[botID] = append(s.infts[botID], inft)
+	return inft, nil
+}
+
+func (s *MemoryStore) GetINFT(botID, inftID string) (domain.INFTAsset, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.bots[botID]; !ok {
+		return domain.INFTAsset{}, ErrBotNotFound
+	}
+	for _, inft := range s.infts[botID] {
+		if inft.ID == inftID {
+			return inft, nil
+		}
+	}
+	return domain.INFTAsset{}, errors.New("inft not found")
+}
+
+func (s *MemoryStore) ListINFTs(botID string) ([]domain.INFTAsset, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.bots[botID]; !ok {
+		return nil, ErrBotNotFound
+	}
+	infts := s.infts[botID]
+	result := make([]domain.INFTAsset, len(infts))
+	copy(result, infts)
+	return result, nil
+}
+
+func (s *MemoryStore) UpdateINFTs(botID string, infts []domain.INFTAsset) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.bots[botID]; !ok {
+		return ErrBotNotFound
+	}
+	s.infts[botID] = infts
 	return nil
 }

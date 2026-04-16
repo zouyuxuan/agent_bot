@@ -19,13 +19,15 @@ type FileStore struct {
 	memories map[string][]domain.ConversationTurn
 	datasets map[string][]domain.TrainingSample
 	skills   map[string][]domain.Skill
+	infts    map[string][]domain.INFTAsset
 }
 
 type persistedState struct {
-	Bots     map[string]domain.BotProfile            `json:"bots"`
-	Memories map[string][]domain.ConversationTurn    `json:"memories"`
-	Datasets map[string][]domain.TrainingSample      `json:"datasets"`
-	Skills   map[string][]domain.Skill               `json:"skills"`
+	Bots     map[string]domain.BotProfile         `json:"bots"`
+	Memories map[string][]domain.ConversationTurn `json:"memories"`
+	Datasets map[string][]domain.TrainingSample   `json:"datasets"`
+	Skills   map[string][]domain.Skill            `json:"skills"`
+	INFTs    map[string][]domain.INFTAsset        `json:"infts"`
 }
 
 func NewFileStore(path string) (*FileStore, error) {
@@ -46,6 +48,7 @@ func NewFileStore(path string) (*FileStore, error) {
 		memories: make(map[string][]domain.ConversationTurn),
 		datasets: make(map[string][]domain.TrainingSample),
 		skills:   make(map[string][]domain.Skill),
+		infts:    make(map[string][]domain.INFTAsset),
 	}
 	_ = fs.load()
 	return fs, nil
@@ -184,6 +187,55 @@ func (s *FileStore) UpdateSkills(botID string, skills []domain.Skill) error {
 	return s.flushLocked()
 }
 
+func (s *FileStore) SaveINFT(botID string, inft domain.INFTAsset) (domain.INFTAsset, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.bots[botID]; !ok {
+		return domain.INFTAsset{}, ErrBotNotFound
+	}
+	s.infts[botID] = append(s.infts[botID], inft)
+	if err := s.flushLocked(); err != nil {
+		return domain.INFTAsset{}, err
+	}
+	return inft, nil
+}
+
+func (s *FileStore) GetINFT(botID, inftID string) (domain.INFTAsset, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.bots[botID]; !ok {
+		return domain.INFTAsset{}, ErrBotNotFound
+	}
+	for _, inft := range s.infts[botID] {
+		if inft.ID == inftID {
+			return inft, nil
+		}
+	}
+	return domain.INFTAsset{}, errors.New("inft not found")
+}
+
+func (s *FileStore) ListINFTs(botID string) ([]domain.INFTAsset, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.bots[botID]; !ok {
+		return nil, ErrBotNotFound
+	}
+	infts := s.infts[botID]
+	result := make([]domain.INFTAsset, len(infts))
+	copy(result, infts)
+	return result, nil
+}
+
+func (s *FileStore) UpdateINFTs(botID string, infts []domain.INFTAsset) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.bots[botID]; !ok {
+		return ErrBotNotFound
+	}
+	s.infts[botID] = infts
+	return s.flushLocked()
+}
+
 func (s *FileStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -213,6 +265,9 @@ func (s *FileStore) load() error {
 	if st.Skills != nil {
 		s.skills = st.Skills
 	}
+	if st.INFTs != nil {
+		s.infts = st.INFTs
+	}
 	return nil
 }
 
@@ -235,6 +290,7 @@ func (s *FileStore) flushLocked() error {
 		Memories: s.memories,
 		Datasets: s.datasets,
 		Skills:   s.skills,
+		INFTs:    s.infts,
 	})
 	closeErr := f.Close()
 	if err != nil {

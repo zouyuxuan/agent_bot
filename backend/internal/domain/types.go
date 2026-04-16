@@ -63,6 +63,29 @@ type Skill struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type INFTAsset struct {
+	ID          string   `json:"id"`
+	BotID       string   `json:"botId"`
+	Kind        string   `json:"kind"` // training_memory | distilled_memory
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Filename    string   `json:"filename"`
+	ContentType string   `json:"contentType"`
+	Content     string   `json:"content"`
+	SizeBytes   int      `json:"sizeBytes"`
+	SampleCount int      `json:"sampleCount,omitempty"`
+	SampleIDs   []string `json:"sampleIds,omitempty"`
+	Source      string   `json:"source,omitempty"`
+
+	StoredOn0G bool   `json:"storedOn0G"`
+	StorageRef string `json:"storageRef"`
+	TxHash     string `json:"txHash,omitempty"`
+	RootHash   string `json:"rootHash,omitempty"`
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type PublishResult struct {
 	BotID            string    `json:"botId"`
 	SampleCount      int       `json:"sampleCount"`

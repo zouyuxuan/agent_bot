@@ -14,9 +14,10 @@ type walletPublishSnapshot struct {
 	ID        string
 	BotID     string
 	Wallet    string
-	Kind      string // "training" | "skill" | "skills_bundle"
+	Kind      string // "training" | "skill" | "skills_bundle" | "inft"
 	SkillID   string
 	SkillIDs  []string
+	INFTID    string
 	Root      common.Hash
 	Payload   []byte
 	SampleIDs []string

@@ -20,4 +20,9 @@ type Store interface {
 	GetSkill(botID, skillID string) (domain.Skill, error)
 	ListSkills(botID string) ([]domain.Skill, error)
 	UpdateSkills(botID string, skills []domain.Skill) error
+
+	SaveINFT(botID string, inft domain.INFTAsset) (domain.INFTAsset, error)
+	GetINFT(botID, inftID string) (domain.INFTAsset, error)
+	ListINFTs(botID string) ([]domain.INFTAsset, error)
+	UpdateINFTs(botID string, infts []domain.INFTAsset) error
 }

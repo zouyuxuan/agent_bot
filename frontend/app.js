@@ -6,6 +6,8 @@ const state = {
   bots: [],
   datasets: [],
   distillation: null,
+  infts: [],
+  publishingINFTIDs: new Set(),
   skills: [],
   selectedSkillFolders: new Set(),
 };
@@ -27,6 +29,10 @@ const memoryDistillRunBtn = document.querySelector("#memory-distill-run");
 const memoryDistillSaveBtn = document.querySelector("#memory-distill-save");
 const memoryDistillStatus = document.querySelector("#memory-distill-status");
 const memoryDistillResult = document.querySelector("#memory-distill-result");
+const inftCreateTrainingBtn = document.querySelector("#inft-create-training");
+const inftCreateDistilledBtn = document.querySelector("#inft-create-distilled");
+const inftStatus = document.querySelector("#inft-status");
+const inftList = document.querySelector("#inft-list");
 const publishResult = document.querySelector("#publish-result");
 const zgsNodesInput = document.querySelector("#zgs-nodes");
 const skillsSummary = document.querySelector("#skills-summary");
@@ -91,6 +97,18 @@ function syncSkillSelectionActions() {
   }
 }
 
+function syncINFTActions() {
+  const datasetCount = Array.isArray(state.datasets) ? state.datasets.length : 0;
+  const hasDistilled = !!String(state.distillation?.memorySummary || "").trim();
+  if (inftCreateTrainingBtn) {
+    inftCreateTrainingBtn.disabled = datasetCount === 0;
+    inftCreateTrainingBtn.textContent = datasetCount > 0 ? `训练数据制作成 iNFT（${datasetCount}）` : "训练数据制作成 iNFT";
+  }
+  if (inftCreateDistilledBtn) {
+    inftCreateDistilledBtn.disabled = !hasDistilled;
+  }
+}
+
 function syncDatasetActions() {
   const count = Array.isArray(state.datasets) ? state.datasets.length : 0;
   if (publishBtn) {
@@ -100,6 +118,7 @@ function syncDatasetActions() {
     datasetExportSkillsBtn.disabled = count === 0;
     datasetExportSkillsBtn.textContent = count > 0 ? `导出训练数据为 Skills（${count}）` : "导出训练数据为 Skills";
   }
+  syncINFTActions();
   syncDistillationActions();
 }
 
@@ -203,6 +222,7 @@ function renderMemoryOverview() {
   if (!memoryOverview) return;
   const datasets = Array.isArray(state.datasets) ? state.datasets : [];
   const skills = Array.isArray(state.skills) ? state.skills : [];
+  const infts = Array.isArray(state.infts) ? state.infts : [];
   const verifiedMemories = datasets.filter((s) => s?.storedOn0G).length;
   const pendingMemories = datasets.filter((s) => s?.uploadPending).length;
   const latestProof = verifiedMemories > 0 || pendingMemories > 0 ? getCurrentProofTimeLabel() : "未上链";
@@ -211,13 +231,14 @@ function renderMemoryOverview() {
     { label: "Memory Samples", value: String(datasets.length), detail: "每轮对话都会沉淀为长期记忆" },
     { label: "Verifiable on 0G", value: String(verifiedMemories), detail: pendingMemories > 0 ? `还有 ${pendingMemories} 条同步中` : "可追溯 root / tx / explorer" },
     { label: "Skill Assets", value: String(skills.length), detail: "支持导入、导出、发布与复用" },
+    { label: "iNFT Assets", value: String(infts.length), detail: "训练数据与蒸馏记忆都可资产化" },
     { label: "Latest Proof", value: latestProof, detail: "从 Chat -> Memory -> Skills -> 0G" },
   ];
 
   memoryOverview.innerHTML = cards
     .map(
       (card) => `
-        <article class="memory-card">
+        <article class="memory-card ${card.label === "Latest Proof" ? "memory-card-wide" : ""}">
           <span>${escapeHtml(card.label)}</span>
           <strong>${escapeHtml(card.value)}</strong>
           <small>${escapeHtml(card.detail)}</small>
@@ -241,6 +262,7 @@ function stringifyDistillValue(value) {
 function renderDistillationResult() {
   if (!memoryDistillResult) return;
   syncDistillationActions();
+  syncINFTActions();
 
   const result = state.distillation;
   if (!result) {
@@ -311,6 +333,16 @@ if (skillsList) {
   });
 }
 
+if (inftList) {
+  inftList.addEventListener("click", async (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLButtonElement)) return;
+    const inftID = target.dataset?.publishInft;
+    if (!inftID) return;
+    await publishINFT(inftID);
+  });
+}
+
 botForm.addEventListener("submit", handleBotSubmit);
 refreshBotsBtn.addEventListener("click", loadBots);
 botList.addEventListener("change", handleBotSwitch);
@@ -318,6 +350,8 @@ chatForm.addEventListener("submit", handleChatSubmit);
 publishBtn.addEventListener("click", publishDatasets);
 datasetExportSkillsBtn?.addEventListener("click", exportDatasetsAsSkills);
 memoryDistillRunBtn?.addEventListener("click", distillMemoriesWith0GCompute);
+inftCreateTrainingBtn?.addEventListener("click", createTrainingINFT);
+inftCreateDistilledBtn?.addEventListener("click", createDistilledINFT);
 skillsLocalUploadBtn?.addEventListener("click", uploadLocalSkills);
 skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillFolders);
 skillsDeleteSelectedBtn?.addEventListener("click", deleteSelectedSkills);
@@ -478,6 +512,18 @@ async function refreshDatasets() {
   return state.datasets;
 }
 
+async function refreshINFTs() {
+  if (!state.activeBotId) {
+    state.infts = [];
+    renderINFTs([]);
+    return [];
+  }
+  const list = await fetchJson(`${apiBase}/api/bots/${state.activeBotId}/infts`);
+  state.infts = Array.isArray(list) ? list : [];
+  renderINFTs(state.infts);
+  return state.infts;
+}
+
 async function loadBots() {
   let bots;
   try {
@@ -495,6 +541,7 @@ async function loadBots() {
     renderActiveBot();
     renderDatasets([]);
     renderSkills([]);
+    renderINFTs([]);
     resetDistillationState();
     return;
   }
@@ -509,6 +556,7 @@ async function loadBots() {
     state.activeBotId = "";
     renderActiveBot();
     renderDatasets([]);
+    renderINFTs([]);
     resetDistillationState();
     return;
   }
@@ -560,6 +608,7 @@ async function refreshActiveBotViews() {
     renderActiveBot();
     renderDatasets([]);
     renderSkills([]);
+    renderINFTs([]);
     resetDistillationState();
     return;
   }
@@ -571,7 +620,7 @@ async function refreshActiveBotViews() {
       fetchJson(`${apiBase}/api/bots/${state.activeBotId}`),
       fetchJson(`${apiBase}/api/bots/${state.activeBotId}/memories`),
     ]);
-    await Promise.all([refreshDatasets(), refreshSkills()]);
+    await Promise.all([refreshDatasets(), refreshSkills(), refreshINFTs()]);
   } catch (e) {
     const msg = String(e?.message || e);
     if (llmStatus) llmStatus.textContent = `[错误] ${msg}`;
@@ -651,6 +700,51 @@ function renderDatasets(samples) {
         <div class="dataset-proof"><small>${escapeHtml(proofSummary)}</small></div>
       `;
       datasetList.append(div);
+    });
+}
+
+function renderINFTs(infts) {
+  state.infts = Array.isArray(infts) ? infts : [];
+  syncINFTActions();
+  renderMemoryOverview();
+  if (!inftList || !inftStatus) return;
+
+  if (!state.infts.length) {
+    inftList.innerHTML = `
+      <article class="inft-item">
+        <strong>暂无 iNFT 资产</strong>
+        <small>你可以把训练数据或蒸馏记忆制作成 iNFT，并发布到 0G 网络。</small>
+      </article>
+    `;
+    return;
+  }
+
+  inftList.innerHTML = "";
+  state.infts
+    .slice()
+    .reverse()
+    .forEach((asset) => {
+      const kindLabel = asset.kind === "distilled_memory" ? "Distilled Memory iNFT" : "Training Memory iNFT";
+      const statusLabel = asset.storedOn0G ? "已发布到 0G" : "待发布";
+      const isPublishing = state.publishingINFTIDs.has(asset.id);
+      const div = document.createElement("article");
+      div.className = "inft-item";
+      div.innerHTML = `
+        <div class="row">
+          <div>
+            <strong>${escapeHtml(asset.name || "未命名 iNFT")}</strong>
+            <small>${escapeHtml(kindLabel)} · 样本数：${escapeHtml(String(asset.sampleCount || 0))}</small>
+          </div>
+          <div class="actions">
+            ${asset.storedOn0G
+              ? `<button class="secondary inft-publish-btn" type="button" disabled>已发布</button>`
+              : `<button class="primary inft-publish-btn" type="button" data-publish-inft="${escapeHtml(asset.id)}" ${isPublishing ? "disabled" : ""}>${isPublishing ? "发布中..." : "发布到 0G"}</button>`}
+          </div>
+        </div>
+        <small>状态：${escapeHtml(statusLabel)}</small>
+        <small>${escapeHtml(asset.description || "")}</small>
+      `;
+      inftList.append(div);
     });
 }
 
@@ -1387,6 +1481,166 @@ async function distillMemoriesWith0GCompute() {
   renderDistillationResult();
   if (memoryDistillStatus) {
     memoryDistillStatus.textContent = `蒸馏完成：已基于 ${Number(data?.sampleCount || 0)} 条记忆生成记忆摘要。`;
+  }
+}
+
+async function createTrainingINFT() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  if (!Array.isArray(state.datasets) || state.datasets.length === 0) {
+    alert("暂无训练样本可制作 iNFT");
+    return;
+  }
+  if (inftStatus) inftStatus.textContent = "正在生成训练数据 iNFT...";
+  try {
+    await fetchJsonTimed(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/create_training`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      },
+      30000,
+    );
+    await refreshINFTs();
+    if (inftStatus) inftStatus.textContent = "训练数据 iNFT 已生成，可继续发布到 0G。";
+  } catch (e) {
+    if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+async function createDistilledINFT() {
+  if (!state.activeBotId) {
+    alert("请先选择机器人");
+    return;
+  }
+  const memorySummary = String(state.distillation?.memorySummary || "").trim();
+  if (!memorySummary) {
+    alert("请先生成蒸馏记忆摘要");
+    return;
+  }
+  if (inftStatus) inftStatus.textContent = "正在生成蒸馏记忆 iNFT...";
+  try {
+    await fetchJsonTimed(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/create_distilled`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memorySummary }),
+      },
+      30000,
+    );
+    await refreshINFTs();
+    if (inftStatus) inftStatus.textContent = "蒸馏记忆 iNFT 已生成，可继续发布到 0G。";
+  } catch (e) {
+    if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+async function publishINFT(inftID) {
+  const id = String(inftID || "").trim();
+  if (!id) return;
+  if (state.publishingINFTIDs.has(id)) return;
+  const ok = await ensureWalletAuthorized();
+  if (!ok) return;
+
+  const authToken = localStorage.getItem("authToken") || "";
+  const zgsNodes = (zgsNodesInput?.value || "").trim();
+  if (zgsNodesInput) localStorage.setItem("zgsNodes", zgsNodes);
+  const from = localStorage.getItem("walletAddress") || "";
+  if (!from) {
+    if (inftStatus) inftStatus.textContent = "[错误] 未连接钱包";
+    return;
+  }
+
+  state.publishingINFTIDs.add(id);
+  renderINFTs(state.infts);
+  if (inftStatus) inftStatus.textContent = "准备链上交易（iNFT）...";
+  let prepResp, prep;
+  try {
+    ({ resp: prepResp, data: prep } = await fetchJsonWithTimeout(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/${id}/publish_prepare`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ zgsNodes }),
+      },
+      45000,
+    ));
+  } catch (e) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] 准备链上交易超时或失败：${String(e?.message || e)}`;
+    return;
+  }
+  if (!prepResp.ok) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] ${prep?.error || prepResp.statusText}`;
+    return;
+  }
+  if (!prep?.publishId) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = "[错误] 后端未返回 publishId，请重启后端并刷新页面后重试";
+    return;
+  }
+
+  if (inftStatus) inftStatus.textContent = "请在钱包中确认交易（iNFT）...";
+  let txHash;
+  try {
+    txHash = await window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{ from, to: prep.to, data: prep.data, value: prep.value }],
+    });
+  } catch (e) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] 交易发送失败：${String(e?.message || e)}`;
+    return;
+  }
+
+  if (inftStatus) inftStatus.textContent = "交易已发送，等待发布 iNFT...";
+  let finResp, result;
+  try {
+    ({ resp: finResp, data: result } = await fetchJsonWithTimeout(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/${id}/publish_finalize`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ zgsNodes, publishId: String(prep.publishId), txHash, rootHash: prep.rootHash }),
+      },
+      120000,
+    ));
+  } catch (e) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] 发布 iNFT 超时或失败：${String(e?.message || e)}`;
+    return;
+  }
+  if (!finResp.ok) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] ${result?.error || finResp.statusText}`;
+    return;
+  }
+
+  try {
+    await refreshINFTs();
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = "iNFT 已成功发布到 0G。";
+  } catch (e) {
+    state.publishingINFTIDs.delete(id);
+    renderINFTs(state.infts);
+    if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
   }
 }
 
