@@ -30,22 +30,6 @@
             <input name="name" placeholder="Nova" required />
           </label>
           <label>
-            性格
-            <input name="personality" placeholder="理性、温暖、擅长陪伴" />
-          </label>
-          <label>
-            性别
-            <select name="gender">
-              <option value="neutral">中性</option>
-              <option value="female">女性</option>
-              <option value="male">男性</option>
-            </select>
-          </label>
-          <label>
-            照片 URL
-            <input name="avatarUrl" placeholder="https://example.com/avatar.png" />
-          </label>
-          <label>
             默认模型 ID
             <select id="bot-model-preset">
               <option value="">自定义...</option>
@@ -101,10 +85,6 @@
           <label>
             API Key
             <input id="llm-apikey" type="password" placeholder="sk-..." />
-          </label>
-          <label>
-            Temperature
-            <input id="llm-temp" type="number" step="0.1" min="0" max="2" value="0.7" />
           </label>
           <div class="debug-toggle">
             <input id="debug-skills" type="checkbox" />

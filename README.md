@@ -19,7 +19,7 @@
 
 ## 当前能力
 
-- 创建和管理聊天机器人资料
+- 创建和管理聊天机器人资料（名称 / 模型 / 系统提示词）
 - 聊天过程中累积成长值
 - 自动把每轮对话转换为长期记忆样本
 - 查看训练样本与样本级别的 0G proof 信息
@@ -28,6 +28,7 @@
 - 一键将训练样本发布到 0G（已接入 0G Storage Go SDK；未配置密钥时自动降级为本地模拟引用）
 - 将训练记忆转化为 Skills，并作为可迁移的 Agent 资产层管理
 - 将训练数据与蒸馏记忆制作成 iNFT 资产，并发布到 0G 网络
+- 使用 `MemoryRegistry` 合约将 iNFT 资产登记到 0G Chain，形成链上 provenance
 - 后端可直接托管前端静态页面
 
 ## 启动方式
@@ -77,6 +78,8 @@ go run ./backend/cmd/server
 - `POST /api/bots/:id/infts/create_distilled` 将蒸馏记忆制作成 iNFT
 - `POST /api/bots/:id/infts/:inftId/publish_prepare` 准备 iNFT 发布交易
 - `POST /api/bots/:id/infts/:inftId/publish_finalize` 完成 iNFT 发布到 0G
+- `POST /api/bots/:id/infts/:inftId/register_prepare` 准备 MemoryRegistry 登记交易
+- `POST /api/bots/:id/infts/:inftId/register_finalize` 完成 MemoryRegistry 链上登记
 - `POST /api/bots/:id/publish` 发布训练数据到 0G
 - `POST /api/x402/fetch` 通过 x402 协议发起“需要付费”的 HTTP 请求（buyer 侧自动处理 402 支付挑战）
 
@@ -122,6 +125,20 @@ go run ./backend/cmd/server
 - `ZERO_G_ZGS_NODES` 可选，逗号分隔的存储节点 URL 列表（当 indexer 503 时用于直连上传绕过 indexer；可从 StorageScan 的 miners 列表复制 URL）
 - `ZERO_G_RPC_TIMEOUT_MS` 默认 `30000`，ZGS/EVM RPC 单次请求超时（毫秒）
 - `ZERO_G_ZGS_PROBE_TIMEOUT_MS` 默认 `3500`，发布前探测 ZGS 节点可达性超时（毫秒）
+- `ZERO_G_MEMORY_REGISTRY_ADDRESS` MemoryRegistry 合约地址（用于 iNFT 链上登记）
+
+### MemoryRegistry 合约
+
+仓库已包含一个最小可用的 `MemoryRegistry.sol`：
+
+- 路径：`contracts/MemoryRegistry.sol`
+- 部署脚本：`script/DeployMemoryRegistry.s.sol`
+
+建议使用 Foundry 部署；如本地尚未安装 `forge-std`，请先执行：
+
+```bash
+forge install foundry-rs/forge-std
+```
 
 ### 0G Compute 环境变量
 

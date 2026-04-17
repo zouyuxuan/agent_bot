@@ -64,12 +64,16 @@ func (s *Server) handleINFTs(w http.ResponseWriter, r *http.Request, botID strin
 		return
 	}
 
-	if len(rest) == 2 && (rest[1] == "publish_prepare" || rest[1] == "publish_finalize") {
+	if len(rest) == 2 && (rest[1] == "publish_prepare" || rest[1] == "publish_finalize" || rest[1] == "register_prepare" || rest[1] == "register_finalize") {
 		switch rest[1] {
 		case "publish_prepare":
 			s.handleINFTPublishPrepare(w, r, botID, rest[0])
 		case "publish_finalize":
 			s.handleINFTPublishFinalize(w, r, botID, rest[0])
+		case "register_prepare":
+			s.handleINFTRegisterPrepare(w, r, botID, rest[0])
+		case "register_finalize":
+			s.handleINFTRegisterFinalize(w, r, botID, rest[0])
 		}
 		return
 	}
@@ -141,6 +145,62 @@ func (s *Server) handleINFTPublishFinalize(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inft)
+}
+
+func (s *Server) handleINFTRegisterPrepare(w http.ResponseWriter, r *http.Request, botID, inftID string) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	walletAddr, ok := s.requireWallet(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.service.PrepareINFTRegister(ctx, botID, inftID, walletAddr)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "inft not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleINFTRegisterFinalize(w http.ResponseWriter, r *http.Request, botID, inftID string) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	_, ok := s.requireWallet(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		PublishID string `json:"publishId"`
+		TxHash    string `json:"txHash"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(input.PublishID) == "" || strings.TrimSpace(input.TxHash) == "" {
+		writeError(w, http.StatusBadRequest, "publishId and txHash are required")
+		return
+	}
+	inft, err := s.service.FinalizeINFTRegister(r.Context(), botID, inftID, input.PublishID, input.TxHash)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "inft not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, inft)

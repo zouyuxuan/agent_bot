@@ -11,17 +11,18 @@ import (
 )
 
 type walletPublishSnapshot struct {
-	ID        string
-	BotID     string
-	Wallet    string
-	Kind      string // "training" | "skill" | "skills_bundle" | "inft"
-	SkillID   string
-	SkillIDs  []string
-	INFTID    string
-	Root      common.Hash
-	Payload   []byte
-	SampleIDs []string
-	CreatedAt time.Time
+	ID              string
+	BotID           string
+	Wallet          string
+	Kind            string // "training" | "skill" | "skills_bundle" | "inft"
+	SkillID         string
+	SkillIDs        []string
+	INFTID          string
+	RegistryAssetID string
+	Root            common.Hash
+	Payload         []byte
+	SampleIDs       []string
+	CreatedAt       time.Time
 }
 
 func newSnapshotID() (string, error) {

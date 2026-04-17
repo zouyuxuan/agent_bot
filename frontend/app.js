@@ -8,6 +8,7 @@ const state = {
   distillation: null,
   infts: [],
   publishingINFTIDs: new Set(),
+  registeringINFTIDs: new Set(),
   skills: [],
   selectedSkillFolders: new Set(),
 };
@@ -45,7 +46,6 @@ const skillsGitHubURL = document.querySelector("#skills-github-url");
 const skillsGitHubImportPublishBtn = document.querySelector("#skills-github-import-publish");
 const skillsPublishBundleBtn = document.querySelector("#skills-publish-bundle");
 const llmApiKey = document.querySelector("#llm-apikey");
-const llmTemp = document.querySelector("#llm-temp");
 const debugSkills = document.querySelector("#debug-skills");
 const botModelPreset = document.querySelector("#bot-model-preset");
 const botModelCustom = document.querySelector("#bot-model-custom");
@@ -338,8 +338,14 @@ if (inftList) {
     const target = e.target;
     if (!(target instanceof HTMLButtonElement)) return;
     const inftID = target.dataset?.publishInft;
-    if (!inftID) return;
-    await publishINFT(inftID);
+    const registerINFTID = target.dataset?.registerInft;
+    if (inftID) {
+      await publishINFT(inftID);
+      return;
+    }
+    if (registerINFTID) {
+      await registerINFT(registerINFTID);
+    }
   });
 }
 
@@ -454,7 +460,7 @@ function buildBotLLMConfig() {
     provider,
     baseUrl,
     model,
-    temperature: Number.parseFloat(llmTemp?.value || "0.7") || 0.7,
+    temperature: 0.7,
     maxTokens: 2048,
   };
 }
@@ -725,8 +731,9 @@ function renderINFTs(infts) {
     .reverse()
     .forEach((asset) => {
       const kindLabel = asset.kind === "distilled_memory" ? "Distilled Memory iNFT" : "Training Memory iNFT";
-      const statusLabel = asset.storedOn0G ? "已发布到 0G" : "待发布";
+      const statusLabel = asset.registryRegistered ? "已登记到 0G Chain" : asset.storedOn0G ? "待登记到 0G Chain" : "待发布到 0G";
       const isPublishing = state.publishingINFTIDs.has(asset.id);
+      const isRegistering = state.registeringINFTIDs.has(asset.id);
       const div = document.createElement("article");
       div.className = "inft-item";
       div.innerHTML = `
@@ -736,13 +743,17 @@ function renderINFTs(infts) {
             <small>${escapeHtml(kindLabel)} · 样本数：${escapeHtml(String(asset.sampleCount || 0))}</small>
           </div>
           <div class="actions">
-            ${asset.storedOn0G
-              ? `<button class="secondary inft-publish-btn" type="button" disabled>已发布</button>`
-              : `<button class="primary inft-publish-btn" type="button" data-publish-inft="${escapeHtml(asset.id)}" ${isPublishing ? "disabled" : ""}>${isPublishing ? "发布中..." : "发布到 0G"}</button>`}
+            ${asset.registryRegistered
+              ? `<button class="secondary inft-publish-btn" type="button" disabled>已登记</button>`
+              : asset.storedOn0G
+                ? `<button class="primary inft-publish-btn" type="button" data-register-inft="${escapeHtml(asset.id)}" ${isRegistering ? "disabled" : ""}>${isRegistering ? "登记中..." : "登记到 Chain"}</button>`
+                : `<button class="primary inft-publish-btn" type="button" data-publish-inft="${escapeHtml(asset.id)}" ${isPublishing ? "disabled" : ""}>${isPublishing ? "发布中..." : "发布到 0G"}</button>`}
           </div>
         </div>
         <small>状态：${escapeHtml(statusLabel)}</small>
         <small>${escapeHtml(asset.description || "")}</small>
+        ${asset.registryRegistered ? `<small>Registry Asset ID：${escapeHtml(shortenMiddle(asset.registryAssetId || "-", 14, 10))}</small>` : ""}
+        ${asset.registryExplorerTxUrl ? `<small>Registry Tx：<a href="${escapeHtml(asset.registryExplorerTxUrl)}" target="_blank" rel="noreferrer">${escapeHtml(shortenMiddle(asset.registryTxHash || "-", 14, 10))}</a></small>` : ""}
       `;
       inftList.append(div);
     });
@@ -752,6 +763,13 @@ function clearPublishingINFTState(inftID) {
   const id = String(inftID || "").trim();
   if (!id) return;
   state.publishingINFTIDs.delete(id);
+  renderINFTs(state.infts);
+}
+
+function clearRegisteringINFTState(inftID) {
+  const id = String(inftID || "").trim();
+  if (!id) return;
+  state.registeringINFTIDs.delete(id);
   renderINFTs(state.infts);
 }
 
@@ -1653,6 +1671,111 @@ async function publishINFT(inftID) {
     if (inftStatus) inftStatus.textContent = "iNFT 已成功发布到 0G。";
   } catch (e) {
     clearPublishingINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
+  }
+}
+
+async function registerINFT(inftID) {
+  const id = String(inftID || "").trim();
+  if (!id) return;
+  if (state.registeringINFTIDs.has(id)) return;
+  const ok = await ensureWalletAuthorized();
+  if (!ok) return;
+
+  const authToken = localStorage.getItem("authToken") || "";
+  const from = localStorage.getItem("walletAddress") || "";
+  if (!from) {
+    if (inftStatus) inftStatus.textContent = "[错误] 未连接钱包";
+    return;
+  }
+
+  state.registeringINFTIDs.add(id);
+  renderINFTs(state.infts);
+  if (inftStatus) inftStatus.textContent = "准备链上登记交易（Memory Registry）...";
+
+  let prepResp, prep;
+  try {
+    ({ resp: prepResp, data: prep } = await fetchJsonWithTimeout(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/${id}/register_prepare`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      },
+      30000,
+    ));
+  } catch (e) {
+    clearRegisteringINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] 准备链上登记超时或失败：${String(e?.message || e)}`;
+    return;
+  }
+  if (!prepResp.ok) {
+    clearRegisteringINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] ${prep?.error || prepResp.statusText}`;
+    return;
+  }
+
+  if (inftStatus) inftStatus.textContent = "请在钱包中确认登记交易（Memory Registry）...";
+  let txHash;
+  try {
+    txHash = await window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{ from, to: prep.to, data: prep.data, value: prep.value }],
+    });
+  } catch (e) {
+    clearRegisteringINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] 登记交易发送失败：${String(e?.message || e)}`;
+    return;
+  }
+
+  if (inftStatus) inftStatus.textContent = "登记交易已发送，等待链上确认...";
+  let finResp, result;
+  try {
+    ({ resp: finResp, data: result } = await fetchJsonWithTimeout(
+      `${apiBase}/api/bots/${state.activeBotId}/infts/${id}/register_finalize`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ publishId: String(prep.publishId), txHash }),
+      },
+      45000,
+    ));
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (msg.includes("请求超时") && txHash) {
+      const ok = await tryResolveTxSuccessFromChain(txHash);
+      if (ok) {
+        try {
+          clearRegisteringINFTState(id);
+          await refreshINFTs();
+          if (inftStatus) inftStatus.textContent = "iNFT 已登记到 0G Chain。";
+        } catch (refreshErr) {
+          if (inftStatus) inftStatus.textContent = `[错误] ${String(refreshErr?.message || refreshErr)}`;
+        }
+        return;
+      }
+    }
+    clearRegisteringINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] iNFT 登记超时或失败：${msg}`;
+    return;
+  }
+  if (!finResp.ok) {
+    clearRegisteringINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] ${result?.error || finResp.statusText}`;
+    return;
+  }
+
+  try {
+    clearRegisteringINFTState(id);
+    await refreshINFTs();
+    if (inftStatus) inftStatus.textContent = "iNFT 已登记到 0G Chain。";
+  } catch (e) {
+    clearRegisteringINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
   }
 }

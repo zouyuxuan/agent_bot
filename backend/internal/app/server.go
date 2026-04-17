@@ -206,9 +206,6 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			ID            string `json:"id"`
 			Name          string `json:"name"`
-			Personality   string `json:"personality"`
-			Gender        string `json:"gender"`
-			AvatarURL     string `json:"avatarUrl"`
 			ModelProvider string `json:"modelProvider"`
 			ModelBaseURL  string `json:"modelBaseUrl"`
 			ModelType     string `json:"modelType"`
@@ -227,9 +224,6 @@ func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 		bot, err := s.service.UpsertBot(domain.BotProfile{
 			ID:            input.ID,
 			Name:          input.Name,
-			Personality:   input.Personality,
-			Gender:        input.Gender,
-			AvatarURL:     input.AvatarURL,
 			ModelProvider: strings.TrimSpace(input.ModelProvider),
 			ModelBaseURL:  strings.TrimSpace(input.ModelBaseURL),
 			ModelType:     input.ModelType,

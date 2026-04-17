@@ -77,20 +77,21 @@ func (s *ChatService) CreateTrainingINFT(botID string) (domain.INFTAsset, error)
 	}
 
 	inft := domain.INFTAsset{
-		ID:          fmt.Sprintf("%s-inft-%d", botID, now.UnixNano()),
-		BotID:       botID,
-		Kind:        "training_memory",
-		Name:        fmt.Sprintf("%s Training Memory iNFT", name),
-		Description: "A user-owned AI memory asset built from raw training conversations.",
-		Filename:    "inft/training-memory.json",
-		ContentType: "application/json",
-		Content:     string(raw),
-		SizeBytes:   len(raw),
-		SampleCount: len(samples),
-		SampleIDs:   sampleIDs,
-		Source:      "training",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           fmt.Sprintf("%s-inft-%d", botID, now.UnixNano()),
+		BotID:        botID,
+		Kind:         "training_memory",
+		Name:         fmt.Sprintf("%s Training Memory iNFT", name),
+		Description:  "A user-owned AI memory asset built from raw training conversations.",
+		Filename:     "inft/training-memory.json",
+		ContentType:  "application/json",
+		Content:      string(raw),
+		SizeBytes:    len(raw),
+		SampleCount:  len(samples),
+		SampleIDs:    sampleIDs,
+		Source:       "training",
+		RegistryKind: 0,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	return s.store.SaveINFT(botID, inft)
 }
@@ -118,6 +119,8 @@ func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (d
 	if name == "" {
 		name = "Agent"
 	}
+
+	parentINFTID, _ := s.latestTrainingINFTID(botID)
 
 	sampleIDs := collectTrainingSampleIDs(samples)
 	payload := map[string]any{
@@ -149,22 +152,37 @@ func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (d
 	}
 
 	inft := domain.INFTAsset{
-		ID:          fmt.Sprintf("%s-inft-%d", botID, now.UnixNano()),
-		BotID:       botID,
-		Kind:        "distilled_memory",
-		Name:        fmt.Sprintf("%s Distilled Memory iNFT", name),
-		Description: "A user-owned distilled AI memory asset summarizing long-term agent memory.",
-		Filename:    "inft/distilled-memory.json",
-		ContentType: "application/json",
-		Content:     string(raw),
-		SizeBytes:   len(raw),
-		SampleCount: len(samples),
-		SampleIDs:   sampleIDs,
-		Source:      "distillation",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           fmt.Sprintf("%s-inft-%d", botID, now.UnixNano()),
+		BotID:        botID,
+		Kind:         "distilled_memory",
+		Name:         fmt.Sprintf("%s Distilled Memory iNFT", name),
+		Description:  "A user-owned distilled AI memory asset summarizing long-term agent memory.",
+		Filename:     "inft/distilled-memory.json",
+		ContentType:  "application/json",
+		Content:      string(raw),
+		SizeBytes:    len(raw),
+		SampleCount:  len(samples),
+		SampleIDs:    sampleIDs,
+		Source:       "distillation",
+		ParentINFTID: parentINFTID,
+		RegistryKind: 1,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	return s.store.SaveINFT(botID, inft)
+}
+
+func (s *ChatService) latestTrainingINFTID(botID string) (string, bool) {
+	infts, err := s.store.ListINFTs(botID)
+	if err != nil || len(infts) == 0 {
+		return "", false
+	}
+	for i := len(infts) - 1; i >= 0; i-- {
+		if strings.TrimSpace(infts[i].Kind) == "training_memory" {
+			return strings.TrimSpace(infts[i].ID), true
+		}
+	}
+	return "", false
 }
 
 func collectTrainingTags(samples []domain.TrainingSample) []string {
