@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"ai-bot-chain/backend/internal/domain"
 
+	"github.com/0gfoundation/0g-storage-client/core"
+	"github.com/0gfoundation/0g-storage-client/transfer"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/sirupsen/logrus"
 )
 
 func (s *ChatService) ListINFTs(botID string) ([]domain.INFTAsset, error) {
@@ -222,45 +226,140 @@ func (s *ChatService) FinalizeINFTPublish(ctx context.Context, botID, inftID, pu
 	if ss.Root != root {
 		return domain.INFTAsset{}, errors.New("rootHash mismatch (payload changed; please prepare+send tx again)")
 	}
+	payload := append([]byte(nil), ss.Payload...)
 
-	if len(zgsNodes) == 0 {
-		nodes, err := discoverZgsNodesViaIndexer(ctx)
-		if err != nil {
-			return domain.INFTAsset{}, err
-		}
-		zgsNodes = nodes
+	dataObj, err := core.NewDataInMemory(payload)
+	if err != nil {
+		return domain.INFTAsset{}, err
 	}
+	tree, err := core.MerkleTree(dataObj)
+	if err != nil {
+		return domain.INFTAsset{}, err
+	}
+	if tree.Root() != root {
+		return domain.INFTAsset{}, errors.New("rootHash mismatch (payload changed; please prepare+send tx again)")
+	}
+
+	mined, success, err := checkTxReceipt(ctx, strings.TrimSpace(txHash))
+	if err != nil {
+		return domain.INFTAsset{}, err
+	}
+	if mined && !success {
+		return domain.INFTAsset{}, errors.New("transaction failed on-chain")
+	}
+
+	s.deleteSnapshot(publishID)
+	go s.completeWalletINFTUpload(botID, inftID, strings.TrimSpace(txHash), root, payload, zgsNodes)
 
 	asset, err := s.store.GetINFT(botID, inftID)
 	if err != nil {
 		return domain.INFTAsset{}, err
 	}
+	explorer := strings.TrimRight(strings.TrimSpace(os.Getenv("ZERO_G_EXPLORER_BASE")), "/")
+	if explorer == "" {
+		explorer = "https://chainscan-galileo.0g.ai"
+	}
+	ref := "0g://storage/root/" + root.Hex() + "?tx=" + strings.TrimSpace(txHash)
 
-	_, err = s.finalizeAssetPublish(ctx, botID, publishID, txHash, rootHash, zgsNodes, func(root common.Hash, txHash, ref string) error {
-		infts, err := s.store.ListINFTs(botID)
-		if err != nil {
-			return err
-		}
-		found := false
-		for i := range infts {
-			if infts[i].ID == inftID {
-				infts[i].StoredOn0G = true
-				infts[i].StorageRef = ref
-				infts[i].TxHash = strings.TrimSpace(txHash)
-				infts[i].RootHash = root.Hex()
-				infts[i].UpdatedAt = time.Now()
-				asset = infts[i]
-				found = true
-				break
-			}
-		}
-		if !found {
-			return errors.New("inft not found")
-		}
-		return s.store.UpdateINFTs(botID, infts)
-	})
+	infts, err := s.store.ListINFTs(botID)
 	if err != nil {
 		return domain.INFTAsset{}, err
 	}
+	found := false
+	for i := range infts {
+		if infts[i].ID == inftID {
+			infts[i].StoredOn0G = true
+			infts[i].StorageRef = ref
+			infts[i].TxHash = strings.TrimSpace(txHash)
+			infts[i].RootHash = root.Hex()
+			infts[i].UpdatedAt = time.Now()
+			asset = infts[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		return domain.INFTAsset{}, errors.New("inft not found")
+	}
+	if err := s.store.UpdateINFTs(botID, infts); err != nil {
+		return domain.INFTAsset{}, err
+	}
+
+	_ = explorer
+	_ = mined
+	_ = success
 	return asset, nil
+}
+
+func (s *ChatService) completeWalletINFTUpload(botID, inftID, txHash string, root common.Hash, payload []byte, zgsNodes []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	defer cancel()
+
+	if len(zgsNodes) == 0 {
+		if nodes, err := discoverZgsNodesViaIndexer(ctx); err == nil {
+			zgsNodes = nodes
+		}
+	}
+	if len(zgsNodes) == 0 {
+		logrus.WithFields(logrus.Fields{"botId": botID, "inftId": inftID, "root": root.Hex()}).Warn("no zgs nodes available for async inft upload")
+		return
+	}
+
+	dataObj, err := core.NewDataInMemory(payload)
+	if err != nil {
+		logrus.WithError(err).Warn("async inft upload: failed to build data")
+		return
+	}
+	tree, err := core.MerkleTree(dataObj)
+	if err != nil {
+		logrus.WithError(err).Warn("async inft upload: failed to build merkle")
+		return
+	}
+
+	zgsClients, reachable, unreachable, err := reachableZgsClients(ctx, zgsNodes)
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"reachable": reachable, "unreachable": unreachable}).Warn("async inft upload: no reachable zgs nodes")
+		return
+	}
+	for _, c := range zgsClients {
+		defer c.Close()
+	}
+
+	fileInfo, err := waitFileInfo(ctx, zgsClients, root, 8*time.Minute)
+	if err != nil {
+		logrus.WithError(err).Warn("async inft upload: file info not found")
+		return
+	}
+
+	segments := buildAllSegmentsWithProof(dataObj, tree)
+	uploader := transfer.NewFileSegmentUploader(zgsClients)
+	if err := uploader.Upload(ctx, transfer.FileSegmentsWithProof{
+		FileInfo: fileInfo,
+		Segments: segments,
+	}, transfer.UploadOption{
+		ExpectedReplica: 1,
+		TaskSize:        16,
+		Method:          "min",
+	}); err != nil {
+		logrus.WithError(err).Warn("async inft upload: segment upload failed")
+		return
+	}
+
+	ref := "0g://storage/root/" + root.Hex() + "?tx=" + strings.TrimSpace(txHash)
+	infts, err := s.store.ListINFTs(botID)
+	if err != nil {
+		logrus.WithError(err).Warn("async inft upload: failed to list infts")
+		return
+	}
+	for i := range infts {
+		if infts[i].ID == inftID {
+			infts[i].StoredOn0G = true
+			infts[i].StorageRef = ref
+			infts[i].TxHash = strings.TrimSpace(txHash)
+			infts[i].RootHash = root.Hex()
+			infts[i].UpdatedAt = time.Now()
+			break
+		}
+	}
+	_ = s.store.UpdateINFTs(botID, infts)
 }

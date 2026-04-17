@@ -748,6 +748,13 @@ function renderINFTs(infts) {
     });
 }
 
+function clearPublishingINFTState(inftID) {
+  const id = String(inftID || "").trim();
+  if (!id) return;
+  state.publishingINFTIDs.delete(id);
+  renderINFTs(state.infts);
+}
+
 function renderSkills(skills) {
   if (!skillsList || !skillsSummary) return;
   const raw = Array.isArray(skills) ? skills : [];
@@ -1572,20 +1579,17 @@ async function publishINFT(inftID) {
       45000,
     ));
   } catch (e) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] 准备链上交易超时或失败：${String(e?.message || e)}`;
     return;
   }
   if (!prepResp.ok) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] ${prep?.error || prepResp.statusText}`;
     return;
   }
   if (!prep?.publishId) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = "[错误] 后端未返回 publishId，请重启后端并刷新页面后重试";
     return;
   }
@@ -1598,8 +1602,7 @@ async function publishINFT(inftID) {
       params: [{ from, to: prep.to, data: prep.data, value: prep.value }],
     });
   } catch (e) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] 交易发送失败：${String(e?.message || e)}`;
     return;
   }
@@ -1620,26 +1623,36 @@ async function publishINFT(inftID) {
       120000,
     ));
   } catch (e) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
-    if (inftStatus) inftStatus.textContent = `[错误] 发布 iNFT 超时或失败：${String(e?.message || e)}`;
+    const msg = String(e?.message || e);
+    if (msg.includes("请求超时") && txHash) {
+      const ok = await tryResolveTxSuccessFromChain(txHash);
+      if (ok) {
+        try {
+          clearPublishingINFTState(id);
+          await refreshINFTs();
+          if (inftStatus) inftStatus.textContent = "iNFT 已成功发布到 0G。";
+        } catch (refreshErr) {
+          if (inftStatus) inftStatus.textContent = `[错误] ${String(refreshErr?.message || refreshErr)}`;
+        }
+        return;
+      }
+    }
+    clearPublishingINFTState(id);
+    if (inftStatus) inftStatus.textContent = `[错误] 发布 iNFT 超时或失败：${msg}`;
     return;
   }
   if (!finResp.ok) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] ${result?.error || finResp.statusText}`;
     return;
   }
 
   try {
+    clearPublishingINFTState(id);
     await refreshINFTs();
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
     if (inftStatus) inftStatus.textContent = "iNFT 已成功发布到 0G。";
   } catch (e) {
-    state.publishingINFTIDs.delete(id);
-    renderINFTs(state.infts);
+    clearPublishingINFTState(id);
     if (inftStatus) inftStatus.textContent = `[错误] ${String(e?.message || e)}`;
   }
 }
