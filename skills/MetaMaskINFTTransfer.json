@@ -1,0 +1,8 @@
+{
+  "type": "metamask_inft_transfer",
+  "name": "MetaMaskINFTTransfer",
+  "description": "当输入涉及查询、查看、我创建的 iNFT 或已有的 iNFT 时，自动展示当前 Bot 下的 iNFT 资产；当输入涉及转移、出售、交易 iNFT / NFT 时，自动调用 MetaMask 发起 MemoryRegistry.transferAsset 链上交易",
+  "triggerKeywords": ["inft", "nft", "转移", "出售", "交易", "sell", "transfer", "trade"],
+  "queryKeywords": ["查询", "查看", "我的inft", "我的nft", "已有的inft", "已有的nft", "创建的inft", "创建的nft", "inft列表", "nft列表", "list", "show", "query"],
+  "chainId": 16602
+}

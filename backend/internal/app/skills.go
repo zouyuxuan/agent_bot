@@ -282,11 +282,8 @@ func (s *Server) handleSkillUpload(w http.ResponseWriter, r *http.Request, botID
 			continue
 		}
 
-		// Use path-without-ext as default name to preserve folder structure in UI (and keep names stable).
-		name := strings.TrimSpace(strings.TrimSuffix(filename, filepath.Ext(filename)))
-		if name == "" {
-			name = strings.TrimSuffix(base, filepath.Ext(base))
-		}
+		// Use the file prefix (basename without extension) as the default skill name.
+		name := strings.TrimSpace(strings.TrimSuffix(base, filepath.Ext(base)))
 		if name == "" {
 			name = "skill-" + time.Now().Format("20060102150405")
 		}

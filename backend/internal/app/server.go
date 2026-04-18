@@ -401,7 +401,7 @@ func looksLikeTransferSkill(content string) bool {
 		return false
 	}
 	t := strings.ToLower(strings.TrimSpace(v.Type))
-	return t == "evm_transfer" || t == "metamask_transfer"
+	return t == "evm_transfer" || t == "metamask_transfer" || t == "inft_transfer" || t == "metamask_inft_transfer"
 }
 
 func (s *Server) handleMemories(w http.ResponseWriter, r *http.Request, botID string) {

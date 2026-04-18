@@ -19,7 +19,7 @@ func looksLikeTransferSkillContent(content string) bool {
 		return false
 	}
 	t := strings.ToLower(strings.TrimSpace(v.Type))
-	return t == "evm_transfer" || t == "metamask_transfer"
+	return t == "evm_transfer" || t == "metamask_transfer" || t == "inft_transfer" || t == "metamask_inft_transfer"
 }
 
 // buildTransferContextFromFrontend converts frontend-executed transfer tool results
@@ -71,6 +71,21 @@ func buildTransferContextFromFrontend(results []domain.TransferToolResult) strin
 		if amtWei := strings.TrimSpace(r.AmountWei); amtWei != "" {
 			b.WriteString("amountWei: ")
 			b.WriteString(amtWei)
+			b.WriteString("\n")
+		}
+		if assetID := strings.TrimSpace(r.AssetID); assetID != "" {
+			b.WriteString("assetId: ")
+			b.WriteString(assetID)
+			b.WriteString("\n")
+		}
+		if assetName := strings.TrimSpace(r.AssetName); assetName != "" {
+			b.WriteString("assetName: ")
+			b.WriteString(assetName)
+			b.WriteString("\n")
+		}
+		if queryText := strings.TrimSpace(r.QueryText); queryText != "" {
+			b.WriteString("queryText: ")
+			b.WriteString(trunc(queryText, 800))
 			b.WriteString("\n")
 		}
 		if tx := strings.TrimSpace(r.TxHash); tx != "" {

@@ -30,6 +30,7 @@ contract MemoryRegistry {
         bytes32 parentAssetId,
         string name
     );
+    event AssetTransferred(bytes32 indexed assetId, address indexed from, address indexed to);
 
     error InvalidKind();
     error EmptyRootHash();
@@ -37,6 +38,8 @@ contract MemoryRegistry {
     error EmptyName();
     error AssetAlreadyRegistered(bytes32 assetId);
     error AssetNotFound(bytes32 assetId);
+    error InvalidNewOwner();
+    error NotAssetOwner(bytes32 assetId);
 
     function previewAssetId(
         address owner,
@@ -91,6 +94,30 @@ contract MemoryRegistry {
         return ownerAssets[owner];
     }
 
+    function transferAsset(bytes32 assetId, address newOwner) external {
+        if (newOwner == address(0)) {
+            revert InvalidNewOwner();
+        }
+
+        AssetRecord storage record = assets[assetId];
+        if (record.owner == address(0)) {
+            revert AssetNotFound(assetId);
+        }
+        if (record.owner != msg.sender) {
+            revert NotAssetOwner(assetId);
+        }
+        if (record.owner == newOwner) {
+            revert InvalidNewOwner();
+        }
+
+        _removeOwnerAsset(msg.sender, assetId);
+        ownerAssets[newOwner].push(assetId);
+        address previousOwner = record.owner;
+        record.owner = newOwner;
+
+        emit AssetTransferred(assetId, previousOwner, newOwner);
+    }
+
     function _validate(uint8 kind, bytes32 rootHash, string calldata storageRef, string calldata name) private pure {
         if (kind > uint8(AssetKind.DistilledMemory)) {
             revert InvalidKind();
@@ -103,6 +130,20 @@ contract MemoryRegistry {
         }
         if (bytes(name).length == 0) {
             revert EmptyName();
+        }
+    }
+
+    function _removeOwnerAsset(address owner, bytes32 assetId) private {
+        bytes32[] storage list = ownerAssets[owner];
+        uint256 length = list.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (list[i] == assetId) {
+                if (i != length - 1) {
+                    list[i] = list[length - 1];
+                }
+                list.pop();
+                return;
+            }
         }
     }
 }

@@ -10,7 +10,7 @@ const state = {
   publishingINFTIDs: new Set(),
   registeringINFTIDs: new Set(),
   skills: [],
-  selectedSkillFolders: new Set(),
+  selectedSkillIDs: new Set(),
 };
 
 const botForm = document.querySelector("#bot-form");
@@ -79,25 +79,20 @@ function normalizeSkillFilename(filename) {
   return out;
 }
 
-function skillFolderFromFilename(filename) {
+function skillDisplayNameFromFilename(filename) {
   const normalized = normalizeSkillFilename(filename);
-  if (!normalized) return "(root)";
-  return normalized.includes("/") ? normalized.split("/")[0] : "(root)";
+  if (!normalized) return "skill";
+  const base = normalized.split("/").pop() || normalized;
+  const idx = base.lastIndexOf(".");
+  return idx > 0 ? base.slice(0, idx) : base;
 }
 
 function getEnabledSkillIDsFromSelection() {
-  const enabledSkillIDs = [];
-  const folderSet = new Set(Array.from(state.selectedSkillFolders || []));
-  if (!folderSet.size) return enabledSkillIDs;
-  for (const sk of state.skills || []) {
-    const folder = skillFolderFromFilename(sk.filename);
-    if (folderSet.has(folder)) enabledSkillIDs.push(sk.id);
-  }
-  return enabledSkillIDs;
+  return Array.from(state.selectedSkillIDs || []).filter(Boolean);
 }
 
 function syncSkillSelectionActions() {
-  const count = state.selectedSkillFolders.size;
+  const count = state.selectedSkillIDs.size;
   if (skillsClearSelectionBtn) {
     skillsClearSelectionBtn.disabled = count === 0;
   }
@@ -140,9 +135,9 @@ function syncDistillationActions() {
   }
 }
 
-function pruneSelectedSkillFolders(folderSet) {
-  for (const folder of Array.from(state.selectedSkillFolders)) {
-    if (!folderSet.has(folder)) state.selectedSkillFolders.delete(folder);
+function pruneSelectedSkillIDs(skillIDSet) {
+  for (const id of Array.from(state.selectedSkillIDs)) {
+    if (!skillIDSet.has(id)) state.selectedSkillIDs.delete(id);
   }
 }
 
@@ -346,10 +341,10 @@ if (skillsList) {
   skillsList.addEventListener("change", (e) => {
     const target = e.target;
     if (!(target instanceof HTMLInputElement)) return;
-    const folder = target.dataset?.skillFolderCheck;
-    if (!folder) return;
-    if (target.checked) state.selectedSkillFolders.add(folder);
-    else state.selectedSkillFolders.delete(folder);
+    const skillID = target.dataset?.skillCheck;
+    if (!skillID) return;
+    if (target.checked) state.selectedSkillIDs.add(skillID);
+    else state.selectedSkillIDs.delete(skillID);
     syncSkillSelectionActions();
   });
 }
@@ -379,7 +374,7 @@ memoryDistillRunBtn?.addEventListener("click", distillMemoriesWith0GCompute);
 inftCreateTrainingBtn?.addEventListener("click", createTrainingINFT);
 inftCreateDistilledBtn?.addEventListener("click", createDistilledINFT);
 skillsLocalUploadBtn?.addEventListener("click", uploadLocalSkills);
-skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillFolders);
+skillsClearSelectionBtn?.addEventListener("click", clearSelectedSkillSelections);
 skillsDeleteSelectedBtn?.addEventListener("click", deleteSelectedSkills);
 skillsGitHubImportPublishBtn?.addEventListener("click", importAndPublishSkillsFromGitHub);
 skillsPublishBundleBtn?.addEventListener("click", publishSkillsBundle);
@@ -782,7 +777,7 @@ function renderINFTs(infts) {
         proofLines.push(`<small>Storage Ref：${escapeHtml(asset.storageRef)}</small>`);
       }
       if (asset.registryRegistered) {
-        proofLines.push(`<small>Registry Asset ID：${escapeHtml(shortenMiddle(asset.registryAssetId || "-", 14, 10))}</small>`);
+        proofLines.push(`<small>Registry Asset ID：${escapeHtml(asset.registryAssetId || "-")}</small>`);
       }
       if (asset.registryExplorerTxUrl) {
         proofLines.push(
@@ -834,66 +829,43 @@ function clearRegisteringINFTState(inftID) {
 function renderSkills(skills) {
   if (!skillsList || !skillsSummary) return;
   const raw = Array.isArray(skills) ? skills : [];
-  skillsSummary.textContent = raw.length ? `已上传 ${raw.length} 个 Skills（按文件夹分组）。勾选文件夹后可在对话中启用。` : "暂无 Skills。请先从 GitHub 拉取或上传 Skills。";
+  skillsSummary.textContent = raw.length ? `已上传 ${raw.length} 个 Skills。勾选需要启用的 Skills 后可在对话中使用。` : "暂无 Skills。请先从 GitHub 拉取或上传 Skills。";
   if (skillsPublishBundleBtn) {
     const pending = raw.filter((s) => !s.storedOn0G).length;
     skillsPublishBundleBtn.disabled = pending === 0;
     skillsPublishBundleBtn.textContent = pending ? `发布未上链 Skills 到 0G（${pending}）` : "发布未上链 Skills 到 0G";
   }
 
-  const folderMap = new Map();
-  for (const sk of raw) {
-    const folder = skillFolderFromFilename(sk.filename);
-    if (!folderMap.has(folder)) folderMap.set(folder, []);
-    folderMap.get(folder).push(sk);
-  }
-
-  // Clean selection if folders disappear.
-  const folderSet = new Set(Array.from(folderMap.keys()));
-  pruneSelectedSkillFolders(folderSet);
+  const skillIDSet = new Set(raw.map((sk) => String(sk.id || "").trim()).filter(Boolean));
+  pruneSelectedSkillIDs(skillIDSet);
   syncSkillSelectionActions();
   renderMemoryOverview();
 
-  const folders = Array.from(folderMap.entries())
-    .map(([folder, items]) => {
-      const pending = items.filter((s) => !s.storedOn0G).length;
-      return { folder, items, pending };
-    })
-    .sort((a, b) => a.folder.localeCompare(b.folder));
-
   skillsList.innerHTML = "";
-  folders.forEach((f) => {
+  raw
+    .slice()
+    .sort((a, b) => String(a.filename || "").localeCompare(String(b.filename || "")))
+    .forEach((sk) => {
     const div = document.createElement("article");
-    div.className = "skill-folder-item";
+    div.className = "skill-item";
 
-    const checked = state.selectedSkillFolders.has(f.folder);
-    const names = f.items
-      .slice()
-      .sort((a, b) => String(a.filename || "").localeCompare(String(b.filename || "")))
-      .map((s) => {
-        const fn = normalizeSkillFilename(s.filename);
-        // show file name without the folder prefix
-        if (fn.includes("/")) return fn.split("/").slice(1).join("/");
-        return fn || (s.name || s.id);
-      })
-      .filter(Boolean);
-    const preview = names.slice(0, 6).join(", ") + (names.length > 6 ? ` ... +${names.length - 6}` : "");
+    const checked = state.selectedSkillIDs.has(sk.id);
+    const filename = normalizeSkillFilename(sk.filename);
+    const skillName = String(sk.name || "").trim() || skillDisplayNameFromFilename(filename || sk.id);
+    const statusText = sk.storedOn0G ? "已上链" : "未上链";
 
     div.innerHTML = `
       <div class="row">
         <div class="skill-title">
-          <input type="checkbox" data-skill-folder-check="${escapeHtml(f.folder)}" ${checked ? "checked" : ""} />
-          <strong>${escapeHtml(f.folder)}</strong>
+          <input type="checkbox" data-skill-check="${escapeHtml(sk.id)}" ${checked ? "checked" : ""} />
+          <strong>${escapeHtml(skillName)}</strong>
         </div>
       </div>
-      <small class="hint">文件数：${f.items.length}；待发布：${f.pending}</small>
-      <small class="hint">Skills：${escapeHtml(preview || "-")}</small>
-      <small class="hint">状态：${f.pending === 0 ? "已上链" : "未上链"}（未上链也可启用；发布仅用于 0G 存储/分享）</small>
+      <small class="hint">文件：${escapeHtml(filename || sk.name || sk.id)}</small>
+      <small class="hint">状态：${escapeHtml(statusText)}（未上链也可启用；发布仅用于 0G 存储/分享）</small>
     `;
     skillsList.append(div);
   });
-
-  // Folder-level publishing button removed; publish uses bundle publish.
 }
 
 async function importSkillsFromGitHub() {
@@ -1897,9 +1869,9 @@ async function uploadSkillsFolder() {
   }
 
   const fd = new FormData();
-  for (const f of files) {
-    const rel = normalizeSkillFilename(f.webkitRelativePath || f.name);
-    fd.append("files", f, rel);
+  for (const file of files) {
+    const rel = normalizeSkillFilename(file.webkitRelativePath || file.name);
+    fd.append("files", file, rel);
   }
 
   if (skillsSummary) skillsSummary.textContent = "正在上传...";
@@ -1920,7 +1892,7 @@ async function uploadSkillsFolder() {
 
   try {
     await refreshSkills();
-    if (skillsSummary) skillsSummary.textContent = `已上传 ${Number(data?.count || files.length)} 个本地 Skills。勾选文件夹后可在对话中启用。`;
+    if (skillsSummary) skillsSummary.textContent = `已上传 ${Number(data?.count || files.length)} 个本地 Skills。勾选需要启用的 Skills 后可在对话中使用。`;
   } catch (e) {
     if (skillsSummary) skillsSummary.textContent = `[错误] ${String(e?.message || e)}`;
   }
@@ -1930,8 +1902,8 @@ async function uploadLocalSkills() {
   await uploadSkillsFolder();
 }
 
-function clearSelectedSkillFolders() {
-  state.selectedSkillFolders.clear();
+function clearSelectedSkillSelections() {
+  state.selectedSkillIDs.clear();
   syncSkillSelectionActions();
   renderSkills(state.skills);
 }
@@ -1941,28 +1913,21 @@ async function deleteSelectedSkills() {
     alert("请先选择机器人");
     return;
   }
-  const selectedFolders = new Set(Array.from(state.selectedSkillFolders || []));
-  if (!selectedFolders.size) {
-    alert("请先勾选要删除的 Skills 文件夹");
+  const selectedSkillIDs = Array.from(state.selectedSkillIDs || []).filter(Boolean);
+  if (!selectedSkillIDs.length) {
+    alert("请先勾选要删除的 Skills");
     return;
   }
-
-  const skillIDs = (state.skills || [])
-    .filter((sk) => {
-      const folder = skillFolderFromFilename(sk.filename);
-      return selectedFolders.has(folder);
-    })
-    .map((sk) => sk.id)
-    .filter(Boolean);
+  const skillIDs = selectedSkillIDs;
 
   if (!skillIDs.length) {
-    clearSelectedSkillFolders();
+    clearSelectedSkillSelections();
     return;
   }
 
   const confirmed = await showConfirmDialog({
     title: "删除已选 Skills？",
-    message: `将删除已选的 ${selectedFolders.size} 个文件夹中的 ${skillIDs.length} 个 Skills。此操作不可撤销。`,
+    message: `将删除已选的 ${skillIDs.length} 个 Skills。此操作不可撤销。`,
     confirmLabel: "确认删除",
     cancelLabel: "取消",
     danger: true,
@@ -1988,7 +1953,7 @@ async function deleteSelectedSkills() {
     return;
   }
 
-  state.selectedSkillFolders.clear();
+  state.selectedSkillIDs.clear();
   try {
     await refreshSkills();
     if (skillsSummary) skillsSummary.textContent = `已删除 ${Number(data?.deleted || 0)} 个 Skills。`;
@@ -2216,7 +2181,7 @@ function looksLikeTransferSkillContent(content) {
   try {
     const v = JSON.parse(raw);
     const t = String(v?.type || "").trim().toLowerCase();
-    return t === "evm_transfer" || t === "metamask_transfer";
+    return t === "evm_transfer" || t === "metamask_transfer" || t === "inft_transfer" || t === "metamask_inft_transfer";
   } catch {
     return false;
   }
@@ -2226,7 +2191,31 @@ function parseTransferSkillSpec(content) {
   const raw = String(content || "").trim();
   const v = JSON.parse(raw);
   const t = String(v?.type || "").trim().toLowerCase();
-  if (t !== "evm_transfer" && t !== "metamask_transfer") return null;
+  if (t !== "evm_transfer" && t !== "metamask_transfer" && t !== "inft_transfer" && t !== "metamask_inft_transfer") return null;
+
+  if (t === "inft_transfer" || t === "metamask_inft_transfer") {
+    const triggerKeywords = Array.isArray(v?.triggerKeywords)
+      ? v.triggerKeywords
+          .map((k) => String(k || "").trim().toLowerCase())
+          .filter(Boolean)
+      : ["inft", "nft", "出售", "转移", "sell", "transfer", "trade"];
+    const queryKeywords = Array.isArray(v?.queryKeywords)
+      ? v.queryKeywords
+          .map((k) => String(k || "").trim().toLowerCase())
+          .filter(Boolean)
+      : ["查询", "查看", "我的inft", "我的nft", "已有的inft", "已有的nft", "创建的inft", "创建的nft", "inft列表", "nft列表", "list", "show", "query"];
+
+    const chainId = Number(v?.chainId);
+    return {
+      mode: "inft",
+      triggerKeywords,
+      queryKeywords,
+      chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : 16602,
+      token: "",
+      tokenAddress: "",
+      decimals: null,
+    };
+  }
 
   const triggerKeywords = Array.isArray(v?.triggerKeywords)
     ? v.triggerKeywords
@@ -2241,6 +2230,7 @@ function parseTransferSkillSpec(content) {
   const decimals = Number.isInteger(Number(decimalsRaw)) ? Number(decimalsRaw) : null;
 
   return {
+    mode: "fungible",
     triggerKeywords,
     chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : null,
     token,
@@ -2337,6 +2327,124 @@ function normalizeTransferTokenName(token) {
   return low;
 }
 
+function normalizeBytes32(value) {
+  const s = String(value || "").trim();
+  if (!/^0x[a-fA-F0-9]{64}$/.test(s)) return "";
+  if (/^0x0{64}$/i.test(s)) return "";
+  return s;
+}
+
+function buildINFTTransferData(assetId, to) {
+  const methodId = "6ad527f3"; // transferAsset(bytes32,address)
+  const normalizedAssetID = normalizeBytes32(assetId);
+  const normalizedTo = normalizeAddress(to);
+  if (!normalizedAssetID) throw new Error("iNFT Asset ID 无效");
+  if (!normalizedTo) throw new Error("收款地址无效");
+  const toNo0x = normalizedTo.slice(2).toLowerCase().padStart(64, "0");
+  return `0x${methodId}${normalizedAssetID.slice(2).toLowerCase()}${toNo0x}`;
+}
+
+function hasINFTTransferKeyword(message, keywords) {
+  const text = String(message || "").toLowerCase();
+  if (!text) return false;
+  const assetWords = ["inft", "nft", "记忆资产"];
+  const verbWords = ["转移", "出售", "交易", "sell", "transfer", "trade"];
+  const list = Array.isArray(keywords) && keywords.length ? keywords : [];
+  const hasConfigured = list.some((k) => k && text.includes(String(k).toLowerCase()));
+  const hasVerb = verbWords.some((k) => text.includes(k));
+  const hasAssetWord = assetWords.some((k) => text.includes(k));
+  return hasConfigured || (hasVerb && hasAssetWord);
+}
+
+function hasINFTQueryKeyword(message, keywords) {
+  const text = String(message || "").toLowerCase();
+  if (!text) return false;
+  const assetWords = ["inft", "nft", "记忆资产", "资产"];
+  const queryWords = ["查询", "查看", "有哪些", "已有", "创建的", "我的", "list", "show", "query", "owned", "created"];
+  const list = Array.isArray(keywords) && keywords.length ? keywords : [];
+  const hasConfigured = list.some((k) => k && text.includes(String(k).toLowerCase()));
+  const hasQuery = queryWords.some((k) => text.includes(k));
+  const hasAssetWord = assetWords.some((k) => text.includes(k));
+  return hasConfigured || (hasQuery && hasAssetWord);
+}
+
+function formatINFTQueryText(assets) {
+  const list = Array.isArray(assets) ? assets : [];
+  if (!list.length) {
+    return "当前账户下还没有 iNFT 资产。";
+  }
+  const lines = [`当前 Bot 下共有 ${list.length} 个 iNFT 资产：`];
+  list
+    .slice()
+    .reverse()
+    .forEach((asset, index) => {
+      const kindLabel = asset.kind === "distilled_memory" ? "Distilled Memory iNFT" : "Training Memory iNFT";
+      const statusLabel = asset.registryRegistered ? "已登记到 0G Chain" : asset.storedOn0G ? "已发布到 0G，待登记到 Chain" : "待发布到 0G";
+      lines.push(`${index + 1}. ${asset.name || "未命名 iNFT"}`);
+      lines.push(`   类型：${kindLabel}`);
+      lines.push(`   状态：${statusLabel}`);
+      lines.push(`   样本数：${Number(asset.sampleCount || 0)}`);
+      if (asset.registryAssetId) lines.push(`   Registry Asset ID：${asset.registryAssetId}`);
+      if (asset.storageRef) lines.push(`   Storage Ref：${asset.storageRef}`);
+      if (asset.registryTxHash) lines.push(`   Registry Tx：${asset.registryTxHash}`);
+      if (asset.registryExplorerTxUrl) lines.push(`   Registry Explorer：${asset.registryExplorerTxUrl}`);
+      if (asset.id) lines.push(`   本地 iNFT ID：${asset.id}`);
+      if (asset.parentInftId) lines.push(`   Parent iNFT：${asset.parentInftId}`);
+    });
+  return lines.join("\n");
+}
+
+async function syncOwnedINFTsFromRegistry() {
+  if (!state.activeBotId) return [];
+  let owner = localStorage.getItem("walletAddress") || "";
+  if (!owner && window.ethereum?.request) {
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
+      owner = accounts?.[0] || "";
+      if (owner) localStorage.setItem("walletAddress", owner);
+    } catch {
+      owner = "";
+    }
+  }
+  if (!owner) return Array.isArray(state.infts) ? state.infts : [];
+
+  const data = await fetchJsonTimed(
+    `${apiBase}/api/bots/${state.activeBotId}/infts/owned?owner=${encodeURIComponent(owner)}`,
+    {
+      method: "GET",
+    },
+    20000,
+  );
+  state.infts = Array.isArray(data) ? data : [];
+  renderINFTs(state.infts);
+  return state.infts;
+}
+
+function findRegisteredINFTAssetForTransfer(message) {
+  const text = String(message || "");
+  const lower = text.toLowerCase();
+  const assets = (state.infts || []).filter((asset) => asset?.registryRegistered && asset?.registryAssetId);
+  if (!assets.length) return null;
+
+  const explicitAssetIDMatch = text.match(/0x[a-fA-F0-9]{64}/);
+  if (explicitAssetIDMatch) {
+    const assetID = explicitAssetIDMatch[0];
+    const matched = assets.find((asset) => String(asset.registryAssetId || "").toLowerCase() === assetID.toLowerCase());
+    if (matched) return matched;
+  }
+
+  const byName = assets
+    .filter((asset) => {
+      const name = String(asset.name || "").trim().toLowerCase();
+      return !!name && lower.includes(name);
+    })
+    .sort((a, b) => String(b.name || "").length - String(a.name || "").length);
+  if (byName.length) return byName[0];
+
+  if (assets.length === 1) return assets[0];
+  return null;
+}
+
 async function ensureTransferChain(chainIdDec) {
   const n = Number(chainIdDec);
   if (!Number.isFinite(n) || n <= 0) throw new Error("链ID不合法");
@@ -2370,13 +2478,231 @@ async function runTransferSkillsInBrowser(enabledSkillIDs, userMessage) {
   }
   if (!candidates.length) return [];
 
+  const inftQueryMatched = candidates.find(({ spec }) => spec?.mode === "inft" && hasINFTQueryKeyword(userMessage, spec.queryKeywords));
+  const inftMatched = candidates.find(({ spec }) => spec?.mode === "inft" && hasINFTTransferKeyword(userMessage, spec.triggerKeywords));
   // 单条消息最多执行一个 transfer skill，避免一次输入触发多笔转账。
-  const matched = candidates.find(({ spec }) => hasTransferKeyword(userMessage, spec.triggerKeywords));
+  const matched = inftQueryMatched || inftMatched || candidates.find(({ spec }) => spec?.mode !== "inft" && hasTransferKeyword(userMessage, spec.triggerKeywords));
   if (!matched) return [];
 
   const { sk, spec } = matched;
   const startedAt = isoNow();
   const intent = extractTransferIntent(userMessage);
+
+  if (spec?.mode === "inft") {
+    if (inftQueryMatched && matched === inftQueryMatched) {
+      let ownedAssets = state.infts || [];
+      try {
+        ownedAssets = await syncOwnedINFTsFromRegistry();
+      } catch (e) {
+        return [
+          {
+            skillId: sk.id,
+            type: "inft_query",
+            chainId: Number(spec.chainId || 16602),
+            to: "",
+            token: "",
+            amount: "",
+            amountWei: "",
+            assetId: "",
+            assetName: "",
+            queryText: "",
+            ok: false,
+            error: `iNFT 查询失败：${String(e?.message || e)}`,
+            startedAt,
+            endedAt: isoNow(),
+          },
+        ];
+      }
+      return [
+        {
+          skillId: sk.id,
+          type: "inft_query",
+          chainId: Number(spec.chainId || 16602),
+          to: "",
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId: "",
+          assetName: "",
+          queryText: formatINFTQueryText(ownedAssets || []),
+          ok: true,
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    const asset = findRegisteredINFTAssetForTransfer(userMessage);
+    const to = normalizeAddress(intent.to);
+    const assetId = normalizeBytes32(asset?.registryAssetId);
+    const assetName = String(asset?.name || "").trim();
+    const chainId = Number(spec.chainId || 16602);
+    const contractAddr = normalizeAddress(asset?.registryContract || "");
+
+    if (!asset) {
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to: to || intent.to || "",
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId: "",
+          assetName: "",
+          ok: false,
+          error: "未找到可转移的已登记 iNFT，请在消息里提供 iNFT 名称或 Registry Asset ID",
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    if (!to || !assetId || !contractAddr) {
+      const missing = [];
+      if (!to) missing.push("接收地址(0x...)");
+      if (!assetId) missing.push("Registry Asset ID");
+      if (!contractAddr) missing.push("MemoryRegistry 合约地址");
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to: to || intent.to || "",
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId: assetId || "",
+          assetName,
+          ok: false,
+          error: `iNFT 转移参数不完整：缺少 ${missing.join("、")}`,
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    const ok = await ensureWalletAuthorized();
+    if (!ok) {
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to,
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId,
+          assetName,
+          ok: false,
+          error: "未完成钱包授权",
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    try {
+      await ensureTransferChain(chainId);
+    } catch (e) {
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to,
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId,
+          assetName,
+          ok: false,
+          error: `切换链失败：${String(e?.message || e)}`,
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    const from = localStorage.getItem("walletAddress") || "";
+    if (!from) {
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to,
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId,
+          assetName,
+          ok: false,
+          error: "未连接钱包",
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+
+    try {
+      const txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from,
+            to: contractAddr,
+            data: buildINFTTransferData(assetId, to),
+            value: "0x0",
+          },
+        ],
+      });
+
+      state.infts = (state.infts || []).filter((item) => String(item?.registryAssetId || "").toLowerCase() !== assetId.toLowerCase());
+      renderINFTs(state.infts);
+
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId,
+          to,
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId,
+          assetName,
+          txHash: String(txHash || ""),
+          ok: true,
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    } catch (e) {
+      const code = Number(e?.code ?? e?.data?.originalError?.code);
+      let msg = String(e?.message || e);
+      if (code === 4001) msg = "用户取消签名/交易";
+      return [
+        {
+          skillId: sk.id,
+          type: "inft",
+          chainId: Number(spec.chainId || 16602),
+          to,
+          token: "",
+          amount: "",
+          amountWei: "",
+          assetId,
+          assetName,
+          ok: false,
+          error: msg,
+          startedAt,
+          endedAt: isoNow(),
+        },
+      ];
+    }
+  }
 
   const to = normalizeAddress(intent.to);
   const normalizedTokenName = normalizeTransferTokenName(intent.token || spec.token || "native");
@@ -3344,12 +3670,16 @@ function bindWalletEvents() {
     if (!next) {
       localStorage.removeItem("walletAddress");
       localStorage.removeItem("authToken");
+      state.infts = [];
+      renderINFTs([]);
       renderWalletStatus();
       return;
     }
     // Account switch invalidates the previous signature/session.
     localStorage.setItem("walletAddress", next);
     localStorage.removeItem("authToken");
+    state.infts = [];
+    renderINFTs([]);
     renderWalletStatus();
   });
   window.ethereum.on("chainChanged", () => {

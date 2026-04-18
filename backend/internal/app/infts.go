@@ -25,6 +25,30 @@ func (s *Server) handleINFTs(w http.ResponseWriter, r *http.Request, botID strin
 		}
 	}
 
+	if rest[0] == "owned" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		walletAddr := strings.TrimSpace(r.URL.Query().Get("owner"))
+		if walletAddr == "" {
+			var ok bool
+			walletAddr, ok = s.requireWallet(w, r)
+			if !ok {
+				return
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		infts, err := s.service.ListOwnedINFTsByWallet(ctx, botID, walletAddr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, infts)
+		return
+	}
+
 	if rest[0] == "create_training" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
