@@ -248,6 +248,10 @@ button.primary {
   word-break: break-word;
 }
 
+#inft-status:empty {
+  display: none;
+}
+
 .section-title {
   font-weight: 600;
 }
@@ -719,19 +723,19 @@ button.primary {
 }
 
 .inft-item {
-  padding: 12px;
+  padding: 14px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(47, 166, 255, 0.14);
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .inft-item .row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .inft-item .actions {
@@ -751,6 +755,24 @@ button.primary {
   min-width: 120px;
   justify-content: center;
   white-space: nowrap;
+}
+
+.inft-proof {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(12, 18, 24, 0.04);
+  border: 1px solid rgba(47, 166, 255, 0.12);
+}
+
+.inft-proof a {
+  color: var(--accent2);
+  text-decoration: none;
+}
+
+.inft-proof a:hover {
+  text-decoration: underline;
 }
 
 .confirm-dialog.hidden {

@@ -25,7 +25,7 @@ const (
 	defaultZeroGComputeModel = "THUDM/GLM-5-FP8"
 )
 
-func (s *ChatService) DistillTrainingMemories(ctx context.Context, botID string, sampleIDs []string, maxSamples int) (domain.MemoryDistillationResult, error) {
+func (s *ChatService) DistillTrainingMemories(ctx context.Context, botID string, sampleIDs []string, skillIDs []string, maxSamples int) (domain.MemoryDistillationResult, error) {
 	bot, err := s.store.GetBot(botID)
 	if err != nil {
 		return domain.MemoryDistillationResult{}, err
@@ -48,9 +48,14 @@ func (s *ChatService) DistillTrainingMemories(ctx context.Context, botID string,
 		return domain.MemoryDistillationResult{}, err
 	}
 
+	skillContext, err := s.buildSkillContext(botID, skillIDs)
+	if err != nil {
+		return domain.MemoryDistillationResult{}, err
+	}
+
 	raw, err := s.llm.Chat(ctx, cfg, []llm.Message{
 		{Role: "system", Content: buildMemoryDistillationSystemPrompt()},
-		{Role: "user", Content: buildMemoryDistillationUserPrompt(bot, selected)},
+		{Role: "user", Content: buildMemoryDistillationUserPrompt(bot, selected, skillContext)},
 	})
 	if err != nil {
 		return domain.MemoryDistillationResult{}, fmt.Errorf("0G Compute distillation failed: %w", err)
@@ -258,7 +263,7 @@ func buildMemoryDistillationSystemPrompt() string {
 `)
 }
 
-func buildMemoryDistillationUserPrompt(bot domain.BotProfile, samples []domain.TrainingSample) string {
+func buildMemoryDistillationUserPrompt(bot domain.BotProfile, samples []domain.TrainingSample, skillContext string) string {
 	var b strings.Builder
 	b.WriteString("机器人资料：\n")
 	if v := strings.TrimSpace(bot.Name); v != "" {
@@ -309,6 +314,12 @@ func buildMemoryDistillationUserPrompt(bot domain.BotProfile, samples []domain.T
 			b.WriteString(truncate(strings.TrimSpace(turn.AssistantMessage.Content), 420))
 			b.WriteString("\n")
 		}
+	}
+
+	if strings.TrimSpace(skillContext) != "" {
+		b.WriteString("\n已选 Skills（蒸馏时必须一并参考）：\n")
+		b.WriteString(skillContext)
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n请基于这些记忆，输出一个适合长期 AI Agent 使用的 JSON distillation 结果。")

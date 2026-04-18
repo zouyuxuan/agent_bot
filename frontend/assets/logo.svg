@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="AI Bot Chain Studio">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="0G MemoryOS">
   <defs>
-    <linearGradient id="g" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="72" y1="52" x2="438" y2="460" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#00c983"/>
-      <stop offset="0.55" stop-color="#19c6b0"/>
+      <stop offset="0.52" stop-color="#19c6b0"/>
       <stop offset="1" stop-color="#2fa6ff"/>
     </linearGradient>
-    <linearGradient id="g2" x1="160" y1="140" x2="360" y2="368" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.78"/>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(364 132) rotate(132) scale(246 220)">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="core" x1="158" y1="150" x2="352" y2="354" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#eef8ff" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="164" y1="118" x2="370" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a1814" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#0a1814" stop-opacity="0.04"/>
     </linearGradient>
     <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
       <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b"/>
@@ -16,7 +24,7 @@
         1 0 0 0 0
         0 1 0 0 0
         0 0 1 0 0
-        0 0 0 0.28 0" result="bb"/>
+        0 0 0 0.22 0" result="bb"/>
       <feMerge>
         <feMergeNode in="bb"/>
         <feMergeNode in="SourceGraphic"/>
@@ -24,40 +32,30 @@
     </filter>
   </defs>
 
-  <!-- Rounded square background -->
-  <rect x="56" y="56" width="400" height="400" rx="96" fill="url(#g)"/>
+  <rect x="56" y="56" width="400" height="400" rx="96" fill="url(#bg)"/>
+  <rect x="56" y="56" width="400" height="400" rx="96" fill="url(#glow)"/>
 
-  <!-- Subtle grid -->
   <g opacity="0.12">
-    <path d="M96 136H416M96 200H416M96 264H416M96 328H416M96 392H416" stroke="#ffffff" stroke-width="2"/>
-    <path d="M136 96V416M200 96V416M264 96V416M328 96V416M392 96V416" stroke="#ffffff" stroke-width="2"/>
+    <path d="M112 144H400M112 208H400M112 272H400M112 336H400" stroke="#ffffff" stroke-width="2"/>
+    <path d="M144 112V400M208 112V400M272 112V400M336 112V400" stroke="#ffffff" stroke-width="2"/>
   </g>
 
-  <!-- Main mark: chat bubble + chain link + node graph -->
   <g filter="url(#softGlow)">
-    <!-- Chat bubble -->
-    <path d="M152 164c0-22 18-40 40-40h128c22 0 40 18 40 40v96c0 22-18 40-40 40H238l-44 36c-5 4-12 0-12-6v-30h10c-22 0-40-18-40-40v-96z"
-          fill="url(#g2)" stroke="rgba(10,24,20,0.16)" stroke-width="2"/>
+    <path d="M168 176c18-28 52-48 94-48 70 0 126 56 126 126 0 56-36 103-86 120" fill="none" stroke="url(#orbit)" stroke-width="24" stroke-linecap="round"/>
+    <path d="M324 352c-18 18-42 32-68 32-70 0-126-56-126-126 0-24 7-46 18-66" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="16" stroke-linecap="round"/>
 
-    <!-- Chain link (two interlocking rounded rectangles) -->
-    <g transform="translate(0,0)">
-      <path d="M216 230c0-16 13-29 29-29h24c16 0 29 13 29 29s-13 29-29 29h-24c-16 0-29-13-29-29z"
-            fill="none" stroke="rgba(0,122,92,0.55)" stroke-width="14" stroke-linecap="round"/>
-      <path d="M256 230c0-16 13-29 29-29h24c16 0 29 13 29 29s-13 29-29 29h-24c-16 0-29-13-29-29z"
-            fill="none" stroke="rgba(47,166,255,0.55)" stroke-width="14" stroke-linecap="round"/>
-    </g>
+    <rect x="166" y="164" width="180" height="180" rx="54" fill="url(#core)" stroke="rgba(10,24,20,0.12)" stroke-width="2.5"/>
+    <rect x="196" y="194" width="120" height="120" rx="34" fill="none" stroke="rgba(10,24,20,0.16)" stroke-width="12"/>
 
-    <!-- Node graph -->
-    <g>
-      <path d="M192 260C210 242 224 234 256 234c34 0 54 12 72 34" fill="none" stroke="rgba(10,24,20,0.22)" stroke-width="3" stroke-linecap="round"/>
-      <path d="M196 288c26-10 42-10 60 0 18 10 30 22 64 22" fill="none" stroke="rgba(10,24,20,0.18)" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="192" cy="260" r="7" fill="#00c983"/>
-      <circle cx="256" cy="234" r="7" fill="#19c6b0"/>
-      <circle cx="328" cy="268" r="7" fill="#2fa6ff"/>
-      <circle cx="196" cy="288" r="6" fill="#00c983" opacity="0.9"/>
-      <circle cx="256" cy="288" r="6" fill="#19c6b0" opacity="0.9"/>
-      <circle cx="320" cy="310" r="6" fill="#2fa6ff" opacity="0.9"/>
-    </g>
+    <path d="M256 206v96" stroke="rgba(10,24,20,0.18)" stroke-width="16" stroke-linecap="round"/>
+    <path d="M220 238h72M220 270h72" stroke="rgba(10,24,20,0.16)" stroke-width="12" stroke-linecap="round"/>
+
+    <circle cx="154" cy="206" r="10" fill="#00c983"/>
+    <circle cx="358" cy="170" r="10" fill="#2fa6ff"/>
+    <circle cx="338" cy="356" r="10" fill="#19c6b0"/>
+
+    <path d="M164 208c22 10 34 18 52 40" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M348 176c-18 12-28 22-40 42" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M330 348c-20-8-32-16-48-36" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>
-

@@ -15,7 +15,6 @@ const state = {
 
 const botForm = document.querySelector("#bot-form");
 const botList = document.querySelector("#bot-list");
-const refreshBotsBtn = document.querySelector("#refresh-bots");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
 const chatStream = document.querySelector("#chat-stream");
@@ -84,6 +83,17 @@ function skillFolderFromFilename(filename) {
   const normalized = normalizeSkillFilename(filename);
   if (!normalized) return "(root)";
   return normalized.includes("/") ? normalized.split("/")[0] : "(root)";
+}
+
+function getEnabledSkillIDsFromSelection() {
+  const enabledSkillIDs = [];
+  const folderSet = new Set(Array.from(state.selectedSkillFolders || []));
+  if (!folderSet.size) return enabledSkillIDs;
+  for (const sk of state.skills || []) {
+    const folder = skillFolderFromFilename(sk.filename);
+    if (folderSet.has(folder)) enabledSkillIDs.push(sk.id);
+  }
+  return enabledSkillIDs;
 }
 
 function syncSkillSelectionActions() {
@@ -225,11 +235,22 @@ function renderMemoryOverview() {
   const infts = Array.isArray(state.infts) ? state.infts : [];
   const verifiedMemories = datasets.filter((s) => s?.storedOn0G).length;
   const pendingMemories = datasets.filter((s) => s?.uploadPending).length;
-  const latestProof = verifiedMemories > 0 || pendingMemories > 0 ? getCurrentProofTimeLabel() : "未上链";
+  const verifiedSkills = skills.filter((s) => s?.storedOn0G).length;
+  const verifiedINFTs = infts.filter((s) => s?.storedOn0G).length;
+  const registeredINFTs = infts.filter((s) => s?.registryRegistered).length;
+  const totalVerifiableAssets = verifiedMemories + verifiedSkills + verifiedINFTs;
+  const latestProof = totalVerifiableAssets > 0 || pendingMemories > 0 || registeredINFTs > 0 ? getCurrentProofTimeLabel() : "未上链";
 
   const cards = [
     { label: "Memory Samples", value: String(datasets.length), detail: "每轮对话都会沉淀为长期记忆" },
-    { label: "Verifiable on 0G", value: String(verifiedMemories), detail: pendingMemories > 0 ? `还有 ${pendingMemories} 条同步中` : "可追溯 root / tx / explorer" },
+    {
+      label: "Verifiable on 0G",
+      value: String(totalVerifiableAssets),
+      detail:
+        pendingMemories > 0
+          ? `Memory ${verifiedMemories} / Skills ${verifiedSkills} / iNFT ${verifiedINFTs}；还有 ${pendingMemories} 条同步中`
+          : `Memory ${verifiedMemories} / Skills ${verifiedSkills} / iNFT ${verifiedINFTs}；Chain 登记 ${registeredINFTs}`,
+    },
     { label: "Skill Assets", value: String(skills.length), detail: "支持导入、导出、发布与复用" },
     { label: "iNFT Assets", value: String(infts.length), detail: "训练数据与蒸馏记忆都可资产化" },
     { label: "Latest Proof", value: latestProof, detail: "从 Chat -> Memory -> Skills -> 0G" },
@@ -350,7 +371,6 @@ if (inftList) {
 }
 
 botForm.addEventListener("submit", handleBotSubmit);
-refreshBotsBtn.addEventListener("click", loadBots);
 botList.addEventListener("change", handleBotSwitch);
 chatForm.addEventListener("submit", handleChatSubmit);
 publishBtn.addEventListener("click", publishDatasets);
@@ -731,9 +751,45 @@ function renderINFTs(infts) {
     .reverse()
     .forEach((asset) => {
       const kindLabel = asset.kind === "distilled_memory" ? "Distilled Memory iNFT" : "Training Memory iNFT";
+      const sourceLabel = asset.source === "distillation" ? "来源：0G Compute 蒸馏记忆" : "来源：训练数据";
       const statusLabel = asset.registryRegistered ? "已登记到 0G Chain" : asset.storedOn0G ? "待登记到 0G Chain" : "待发布到 0G";
+      const storageLabel = asset.storedOn0G ? "Storage 已发布" : "Storage 待发布";
+      const registryLabel = asset.registryRegistered ? "Registry 已登记" : asset.storedOn0G ? "Registry 待登记" : "Registry 未开始";
       const isPublishing = state.publishingINFTIDs.has(asset.id);
       const isRegistering = state.registeringINFTIDs.has(asset.id);
+      const createdAt = formatDateTime(asset.createdAt);
+      const metadataPills = [
+        `<span class="dataset-pill ${asset.storedOn0G ? "verified" : ""}">${escapeHtml(storageLabel)}</span>`,
+        `<span class="dataset-pill ${asset.registryRegistered ? "verified" : asset.storedOn0G ? "pending" : ""}">${escapeHtml(registryLabel)}</span>`,
+        `<span class="dataset-pill">${escapeHtml(sourceLabel)}</span>`,
+        `<span class="dataset-pill">样本数：${escapeHtml(String(asset.sampleCount || 0))}</span>`,
+      ];
+
+      const proofLines = [
+        `<small>iNFT ID：${escapeHtml(shortenMiddle(asset.id || "-", 14, 10))}</small>`,
+        `<small>创建时间：${escapeHtml(createdAt)}</small>`,
+      ];
+      if (asset.parentInftId) {
+        proofLines.push(`<small>Parent iNFT：${escapeHtml(shortenMiddle(asset.parentInftId, 14, 10))}</small>`);
+      }
+      if (asset.rootHash) {
+        proofLines.push(`<small>Storage Root：${escapeHtml(shortenMiddle(asset.rootHash, 14, 10))}</small>`);
+      }
+      if (asset.txHash) {
+        proofLines.push(`<small>Storage Tx：${escapeHtml(shortenMiddle(asset.txHash, 14, 10))}</small>`);
+      }
+      if (asset.storageRef) {
+        proofLines.push(`<small>Storage Ref：${escapeHtml(asset.storageRef)}</small>`);
+      }
+      if (asset.registryRegistered) {
+        proofLines.push(`<small>Registry Asset ID：${escapeHtml(shortenMiddle(asset.registryAssetId || "-", 14, 10))}</small>`);
+      }
+      if (asset.registryExplorerTxUrl) {
+        proofLines.push(
+          `<small>Registry Tx：<a href="${escapeHtml(asset.registryExplorerTxUrl)}" target="_blank" rel="noreferrer">${escapeHtml(shortenMiddle(asset.registryTxHash || "-", 14, 10))}</a></small>`,
+        );
+      }
+
       const div = document.createElement("article");
       div.className = "inft-item";
       div.innerHTML = `
@@ -750,10 +806,12 @@ function renderINFTs(infts) {
                 : `<button class="primary inft-publish-btn" type="button" data-publish-inft="${escapeHtml(asset.id)}" ${isPublishing ? "disabled" : ""}>${isPublishing ? "发布中..." : "发布到 0G"}</button>`}
           </div>
         </div>
-        <small>状态：${escapeHtml(statusLabel)}</small>
         <small>${escapeHtml(asset.description || "")}</small>
-        ${asset.registryRegistered ? `<small>Registry Asset ID：${escapeHtml(shortenMiddle(asset.registryAssetId || "-", 14, 10))}</small>` : ""}
-        ${asset.registryExplorerTxUrl ? `<small>Registry Tx：<a href="${escapeHtml(asset.registryExplorerTxUrl)}" target="_blank" rel="noreferrer">${escapeHtml(shortenMiddle(asset.registryTxHash || "-", 14, 10))}</a></small>` : ""}
+        <div class="dataset-pills">${metadataPills.join("")}</div>
+        <div class="inft-proof">
+          <small>当前状态：${escapeHtml(statusLabel)}</small>
+          ${proofLines.join("")}
+        </div>
       `;
       inftList.append(div);
     });
@@ -1034,16 +1092,7 @@ async function handleChatSubmit(event) {
 
   let data;
   try {
-    // Expand selected folders into skill IDs.
-    const enabledSkillIDs = [];
-    const folderSet = new Set(Array.from(state.selectedSkillFolders || []));
-    if (folderSet.size) {
-      for (const sk of state.skills || []) {
-        const fn = String(sk.filename || "").trim();
-        const folder = fn.includes("/") ? fn.split("/")[0] : "(root)";
-        if (folderSet.has(folder)) enabledSkillIDs.push(sk.id);
-      }
-    }
+    const enabledSkillIDs = getEnabledSkillIDsFromSelection();
 
     // Frontend-executed transfer tools run first; if a transfer is attempted in
     // this turn, skip x402 tools to avoid dual wallet flows in one message.
@@ -1483,6 +1532,7 @@ async function distillMemoriesWith0GCompute() {
     memoryDistillStatus.textContent = "正在通过 0G Compute 蒸馏记忆...";
   }
 
+  const enabledSkillIDs = getEnabledSkillIDsFromSelection();
   let data;
   try {
     data = await fetchJsonTimed(
@@ -1490,7 +1540,7 @@ async function distillMemoriesWith0GCompute() {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxSamples: 12 }),
+        body: JSON.stringify({ maxSamples: 12, skills: enabledSkillIDs }),
       },
       120000,
     );

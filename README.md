@@ -2,6 +2,46 @@
 
 一个基于 Go 后端和原生 JavaScript 前端构建的 0G Agent Memory Layer 项目。用户可以自定义机器人性格、系统提示词与技能层；随着持续互动，系统会把对话沉淀为可验证的长期记忆，再导出为 Skills、发布到 0G，并在多 Agent 场景中复用。
 
+## 架构图
+
+```mermaid
+flowchart TD
+    U["User Conversation"] --> B["Bot Runtime"]
+    B --> M["Raw Memory Samples"]
+    M --> C["0G Compute Distillation"]
+    C --> D["Distilled Memory Summary"]
+
+    M --> S["Skill Layer"]
+    D --> I2["Distilled Memory iNFT"]
+    M --> I1["Training Memory iNFT"]
+
+    S --> G1["0G Storage Publish"]
+    I1 --> G1
+    I2 --> G1
+    M --> G1
+
+    I1 --> R["MemoryRegistry (0G Chain)"]
+    I2 --> R
+
+    R --> P["Provenance / Explorer Proof"]
+    G1 --> P
+
+    I1 --> X["Import to Another Bot"]
+    I2 --> X
+    S --> X
+```
+
+**模块说明**
+
+- `User Conversation`：用户与 Bot 交互，持续生成长期记忆。
+- `Raw Memory Samples`：原始训练样本层，保存多轮对话和记忆 proof。
+- `0G Compute Distillation`：使用 0G Compute 对原始记忆做蒸馏，生成结构化长期记忆摘要。
+- `Skill Layer`：训练记忆可以导出为 Skills，并参与后续蒸馏与复用。
+- `Training / Distilled Memory iNFT`：将原始记忆或蒸馏记忆资产化。
+- `0G Storage Publish`：Skills、iNFT、训练记忆都可发布到 0G Storage。
+- `MemoryRegistry (0G Chain)`：对 iNFT 资产做链上登记，形成可验证 provenance。
+- `Import to Another Bot`：支持把 Skills / iNFT 导入到另一个 Bot，实现记忆迁移。
+
 ## 项目结构
 
 ```text

@@ -77,7 +77,6 @@
         <div class="bot-selector">
           <div class="section-title">已创建机器人</div>
           <select id="bot-list"></select>
-          <button id="refresh-bots" class="secondary">刷新列表</button>
         </div>
 
         <div class="llm-config">
@@ -131,16 +130,6 @@
         </div>
         <p class="hint">把每轮对话沉淀成用户可拥有、可导出、可验证、可迁移的 Agent Memory 与 Skills。</p>
         <div id="memory-overview" class="memory-overview"></div>
-        <div class="distill-box">
-          <div class="section-title">0G Compute Memory Distillation</div>
-          <p class="hint">使用 0G Compute 对原始记忆做蒸馏，仅保留一段简洁的记忆摘要。</p>
-          <div class="distill-actions">
-            <button id="memory-distill-run" class="secondary" type="button">0G Compute 蒸馏记忆</button>
-          </div>
-          <p id="memory-distill-status" class="hint"></p>
-          <div id="memory-distill-result" class="distill-result"></div>
-        </div>
-
         <div class="skills-box">
           <div class="section-title">iNFT Layer（创建 / 发布）</div>
           <div class="skills-actions">
@@ -174,6 +163,16 @@
           </div>
           <button id="skills-publish-bundle" class="primary" type="button">发布未上链 Skills 到 0G</button>
           <div id="skills-list" class="skills-list"></div>
+        </div>
+
+        <div class="distill-box">
+          <div class="section-title">0G Compute Memory Distillation</div>
+          <p class="hint">先勾选需要参与蒸馏的 Skills，再使用 0G Compute 对原始记忆和已选 Skills 做联合蒸馏，仅保留一段简洁的记忆摘要。</p>
+          <div class="distill-actions">
+            <button id="memory-distill-run" class="secondary" type="button">0G Compute 蒸馏记忆</button>
+          </div>
+          <p id="memory-distill-status" class="hint"></p>
+          <div id="memory-distill-result" class="distill-result"></div>
         </div>
 
         <div class="x402-box collapsed" id="x402-box">

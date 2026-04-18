@@ -45,6 +45,7 @@ func (s *Server) handleDatasetsDistill(w http.ResponseWriter, r *http.Request, b
 
 	var input struct {
 		SampleIDs  []string `json:"sampleIds"`
+		Skills     []string `json:"skills"`
 		MaxSamples int      `json:"maxSamples"`
 	}
 	if err := decodeOptionalJSONBody(r, &input); err != nil {
@@ -55,7 +56,7 @@ func (s *Server) handleDatasetsDistill(w http.ResponseWriter, r *http.Request, b
 	ctx, cancel := context.WithTimeout(r.Context(), 100*time.Second)
 	defer cancel()
 
-	out, err := s.service.DistillTrainingMemories(ctx, botID, input.SampleIDs, input.MaxSamples)
+	out, err := s.service.DistillTrainingMemories(ctx, botID, input.SampleIDs, input.Skills, input.MaxSamples)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrBotNotFound):
