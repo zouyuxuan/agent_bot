@@ -14,7 +14,7 @@
           <p class="eyebrow">Bot Studio</p>
           <div class="brand">
             <img class="brand-logo" src="./assets/logo.svg" alt="logo" />
-            <h1>0G Agent Memory Layer Studio</h1>
+            <h1>0G MemoryOS</h1>
           </div>
         </div>
 
@@ -115,9 +115,6 @@
             <button type="submit">发送</button>
           </form>
           <p class="hint">
-            提示：保留 Skills 自动调用 x402；也可手动调用：在输入框发送 <code>/402 GET https://...</code>（需要支付时会弹出钱包签名确认）。
-          </p>
-          <p class="hint">
             每轮对话都会沉淀成 Agent Memory；你可以把这些记忆导出成 Skills，再发布到 0G，构建可拥有、可迁移的 AI 资产层。
           </p>
         </div>
@@ -173,47 +170,6 @@
           </div>
           <p id="memory-distill-status" class="hint"></p>
           <div id="memory-distill-result" class="distill-result"></div>
-        </div>
-
-        <div class="x402-box collapsed" id="x402-box">
-          <button id="x402-toggle" class="x402-toggle" type="button" aria-expanded="false">
-            <span class="section-title">x402 测试面板（按次付费 HTTP 访问）</span>
-            <span class="x402-chev" aria-hidden="true">▾</span>
-          </button>
-          <div class="x402-body">
-            <p class="hint">需要先登录钱包。浏览器将使用 x402 SDK + MetaMask 在需要支付时弹出签名确认，并自动重试请求。</p>
-            <label>
-              URL
-              <input id="x402-url" placeholder="https://sandbox.agentrails.io/api/x402/protected/analysis" />
-            </label>
-            <div class="debug-toggle" style="margin-top: 6px;">
-              <input id="x402-use-proxy" type="checkbox" checked />
-              <label for="x402-use-proxy" class="debug-toggle-label">使用后端转发（解决 CORS，推荐）</label>
-            </div>
-            <label>
-              Method
-              <select id="x402-method">
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="DELETE">DELETE</option>
-              </select>
-            </label>
-            <label>
-              Headers (JSON，可选)
-              <textarea id="x402-headers" rows="3" placeholder='{"accept":"application/json"}'></textarea>
-            </label>
-            <label>
-              Body (JSON，可选，仅非 GET/HEAD 使用)
-              <textarea id="x402-body" rows="4" placeholder='{"query":"hello"}'></textarea>
-            </label>
-            <label>
-              Timeout (ms)
-              <input id="x402-timeout" type="number" min="1000" step="500" value="45000" />
-            </label>
-            <button id="x402-send" class="secondary" type="button">发送 x402 请求</button>
-            <pre id="x402-output" class="x402-output"></pre>
-          </div>
         </div>
 
         <label>
