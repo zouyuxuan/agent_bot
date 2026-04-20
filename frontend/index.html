@@ -198,6 +198,23 @@
       </div>
     </div>
 
+    <div id="inft-description-dialog" class="confirm-dialog hidden" aria-hidden="true">
+      <div id="inft-description-dialog-backdrop" class="confirm-dialog-backdrop"></div>
+      <div class="confirm-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="inft-description-dialog-heading">
+        <p class="eyebrow">创建蒸馏记忆 iNFT</p>
+        <h2 id="inft-description-dialog-heading">填写 iNFT 描述</h2>
+        <p id="inft-description-dialog-message" class="hint">这段描述会写入 iNFT 元数据，并展示在 iNFT 资产卡片中。</p>
+        <label class="dialog-field" for="inft-description-input">
+          <span>iNFT 描述</span>
+          <textarea id="inft-description-input" rows="5" maxlength="500" placeholder="输入这份蒸馏记忆 iNFT 的描述"></textarea>
+        </label>
+        <div class="confirm-dialog-actions">
+          <button id="inft-description-dialog-cancel" class="secondary" type="button">取消</button>
+          <button id="inft-description-dialog-confirm" type="button">创建 iNFT</button>
+        </div>
+      </div>
+    </div>
+
     <script src="./app.js" type="module"></script>
   </body>
   </html>

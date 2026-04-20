@@ -96,7 +96,7 @@ func (s *ChatService) CreateTrainingINFT(botID string) (domain.INFTAsset, error)
 	return s.store.SaveINFT(botID, inft)
 }
 
-func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (domain.INFTAsset, error) {
+func (s *ChatService) CreateDistilledINFT(botID string, memorySummary, description string) (domain.INFTAsset, error) {
 	bot, err := s.store.GetBot(botID)
 	if err != nil {
 		return domain.INFTAsset{}, err
@@ -104,6 +104,10 @@ func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (d
 	memorySummary = strings.TrimSpace(memorySummary)
 	if memorySummary == "" {
 		return domain.INFTAsset{}, errors.New("missing distilled memory summary")
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		description = "A user-owned distilled AI memory asset summarizing long-term agent memory."
 	}
 
 	samples, err := s.store.ListTrainingSamples(botID)
@@ -128,7 +132,7 @@ func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (d
 		"assetType":   "iNFT",
 		"kind":        "distilled_memory",
 		"name":        fmt.Sprintf("%s Distilled Memory iNFT", name),
-		"description": "A user-owned distilled AI memory asset summarizing long-term agent memory.",
+		"description": description,
 		"bot": map[string]any{
 			"id":          bot.ID,
 			"name":        bot.Name,
@@ -156,7 +160,7 @@ func (s *ChatService) CreateDistilledINFT(botID string, memorySummary string) (d
 		BotID:        botID,
 		Kind:         "distilled_memory",
 		Name:         fmt.Sprintf("%s Distilled Memory iNFT", name),
-		Description:  "A user-owned distilled AI memory asset summarizing long-term agent memory.",
+		Description:  description,
 		Filename:     "inft/distilled-memory.json",
 		ContentType:  "application/json",
 		Content:      string(raw),

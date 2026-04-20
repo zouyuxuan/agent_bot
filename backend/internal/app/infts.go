@@ -74,12 +74,13 @@ func (s *Server) handleINFTs(w http.ResponseWriter, r *http.Request, botID strin
 		}
 		var input struct {
 			MemorySummary string `json:"memorySummary"`
+			Description   string `json:"description"`
 		}
 		if err := decodeOptionalJSONBody(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		inft, err := s.service.CreateDistilledINFT(botID, input.MemorySummary)
+		inft, err := s.service.CreateDistilledINFT(botID, input.MemorySummary, input.Description)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

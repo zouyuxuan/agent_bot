@@ -69,8 +69,16 @@ const confirmDialogHeading = document.querySelector("#confirm-dialog-heading");
 const confirmDialogMessage = document.querySelector("#confirm-dialog-message");
 const confirmDialogCancelBtn = document.querySelector("#confirm-dialog-cancel");
 const confirmDialogConfirmBtn = document.querySelector("#confirm-dialog-confirm");
+const inftDescriptionDialog = document.querySelector("#inft-description-dialog");
+const inftDescriptionDialogBackdrop = document.querySelector("#inft-description-dialog-backdrop");
+const inftDescriptionDialogHeading = document.querySelector("#inft-description-dialog-heading");
+const inftDescriptionDialogMessage = document.querySelector("#inft-description-dialog-message");
+const inftDescriptionInput = document.querySelector("#inft-description-input");
+const inftDescriptionDialogCancelBtn = document.querySelector("#inft-description-dialog-cancel");
+const inftDescriptionDialogConfirmBtn = document.querySelector("#inft-description-dialog-confirm");
 
 let activeConfirmDialog = null;
+let activeINFTDescriptionDialog = null;
 
 function normalizeSkillFilename(filename) {
   let out = String(filename || "").trim().replaceAll("\\", "/");
@@ -298,6 +306,12 @@ function renderDistillationResult() {
   `;
 }
 
+function buildDefaultDistilledINFTDescription(memorySummary) {
+  const summary = String(memorySummary || "").trim();
+  if (!summary) return "A user-owned distilled AI memory asset summarizing long-term agent memory.";
+  return summary.length > 180 ? `${summary.slice(0, 180)}...` : summary;
+}
+
 function closeConfirmDialog(confirmed) {
   if (!activeConfirmDialog) return;
   const { resolve } = activeConfirmDialog;
@@ -333,6 +347,60 @@ function showConfirmDialog({ title = "请确认", message = "", confirmLabel = "
     activeConfirmDialog = { resolve };
     setTimeout(() => {
       confirmDialogConfirmBtn.focus();
+    }, 0);
+  });
+}
+
+function closeINFTDescriptionDialog(confirmed) {
+  if (!activeINFTDescriptionDialog) return;
+  const { resolve } = activeINFTDescriptionDialog;
+  activeINFTDescriptionDialog = null;
+  const value = confirmed ? String(inftDescriptionInput?.value || "").trim() : null;
+  if (inftDescriptionDialog) {
+    inftDescriptionDialog.classList.add("hidden");
+    inftDescriptionDialog.setAttribute("aria-hidden", "true");
+  }
+  if (inftDescriptionInput) {
+    inftDescriptionInput.value = "";
+  }
+  resolve(value);
+}
+
+function showINFTDescriptionDialog({
+  title = "填写 iNFT 描述",
+  message = "",
+  defaultValue = "",
+  confirmLabel = "创建 iNFT",
+  cancelLabel = "取消",
+} = {}) {
+  if (
+    !inftDescriptionDialog ||
+    !inftDescriptionDialogConfirmBtn ||
+    !inftDescriptionDialogCancelBtn ||
+    !inftDescriptionDialogHeading ||
+    !inftDescriptionDialogMessage ||
+    !inftDescriptionInput
+  ) {
+    return Promise.resolve(null);
+  }
+  if (activeINFTDescriptionDialog) {
+    activeINFTDescriptionDialog.resolve(null);
+    activeINFTDescriptionDialog = null;
+  }
+
+  inftDescriptionDialogHeading.textContent = String(title || "填写 iNFT 描述");
+  inftDescriptionDialogMessage.textContent = String(message || "");
+  inftDescriptionInput.value = String(defaultValue || "");
+  inftDescriptionDialogConfirmBtn.textContent = String(confirmLabel || "创建 iNFT");
+  inftDescriptionDialogCancelBtn.textContent = String(cancelLabel || "取消");
+  inftDescriptionDialog.classList.remove("hidden");
+  inftDescriptionDialog.setAttribute("aria-hidden", "false");
+
+  return new Promise((resolve) => {
+    activeINFTDescriptionDialog = { resolve };
+    setTimeout(() => {
+      inftDescriptionInput.focus();
+      inftDescriptionInput.setSelectionRange(inftDescriptionInput.value.length, inftDescriptionInput.value.length);
     }, 0);
   });
 }
@@ -389,7 +457,21 @@ botModelProvider?.addEventListener("change", () => {
 confirmDialogBackdrop?.addEventListener("click", () => closeConfirmDialog(false));
 confirmDialogCancelBtn?.addEventListener("click", () => closeConfirmDialog(false));
 confirmDialogConfirmBtn?.addEventListener("click", () => closeConfirmDialog(true));
+inftDescriptionDialogBackdrop?.addEventListener("click", () => closeINFTDescriptionDialog(false));
+inftDescriptionDialogCancelBtn?.addEventListener("click", () => closeINFTDescriptionDialog(false));
+inftDescriptionDialogConfirmBtn?.addEventListener("click", () => closeINFTDescriptionDialog(true));
+inftDescriptionInput?.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    closeINFTDescriptionDialog(true);
+  }
+});
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeINFTDescriptionDialog) {
+    event.preventDefault();
+    closeINFTDescriptionDialog(false);
+    return;
+  }
   if (event.key === "Escape" && activeConfirmDialog) {
     event.preventDefault();
     closeConfirmDialog(false);
@@ -801,7 +883,7 @@ function renderINFTs(infts) {
                 : `<button class="primary inft-publish-btn" type="button" data-publish-inft="${escapeHtml(asset.id)}" ${isPublishing ? "disabled" : ""}>${isPublishing ? "发布中..." : "发布到 0G"}</button>`}
           </div>
         </div>
-        <small>${escapeHtml(asset.description || "")}</small>
+        <small class="inft-description">描述：${escapeHtml(asset.description || "暂无描述")}</small>
         <div class="dataset-pills">${metadataPills.join("")}</div>
         <div class="inft-proof">
           <small>当前状态：${escapeHtml(statusLabel)}</small>
@@ -1567,6 +1649,13 @@ async function createDistilledINFT() {
     alert("请先生成蒸馏记忆摘要");
     return;
   }
+  const description = await showINFTDescriptionDialog({
+    title: "为蒸馏记忆 iNFT 添加描述",
+    message: "这段描述会写入蒸馏记忆 iNFT，并在 iNFT 资产卡片中展示。",
+    defaultValue: buildDefaultDistilledINFTDescription(memorySummary),
+    confirmLabel: "创建 iNFT",
+  });
+  if (description === null) return;
   if (inftStatus) inftStatus.textContent = "正在生成蒸馏记忆 iNFT...";
   try {
     await fetchJsonTimed(
@@ -1574,7 +1663,7 @@ async function createDistilledINFT() {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memorySummary }),
+        body: JSON.stringify({ memorySummary, description }),
       },
       30000,
     );
@@ -2360,7 +2449,7 @@ function hasINFTQueryKeyword(message, keywords) {
   const text = String(message || "").toLowerCase();
   if (!text) return false;
   const assetWords = ["inft", "nft", "记忆资产", "资产"];
-  const queryWords = ["查询", "查看", "有哪些", "已有", "创建的", "我的", "list", "show", "query", "owned", "created"];
+  const queryWords = ["查询", "查看", "有哪些", "已有", "创建的", "我的", "收到的", "接收的", "拥有的", "list", "show", "query", "owned", "created"];
   const list = Array.isArray(keywords) && keywords.length ? keywords : [];
   const hasConfigured = list.some((k) => k && text.includes(String(k).toLowerCase()));
   const hasQuery = queryWords.some((k) => text.includes(k));
@@ -2380,16 +2469,19 @@ function formatINFTQueryText(assets) {
     .forEach((asset, index) => {
       const kindLabel = asset.kind === "distilled_memory" ? "Distilled Memory iNFT" : "Training Memory iNFT";
       const statusLabel = asset.registryRegistered ? "已登记到 0G Chain" : asset.storedOn0G ? "已发布到 0G，待登记到 Chain" : "待发布到 0G";
+      const primaryINFTID =
+        String(asset.id || "").trim() && !String(asset.id || "").startsWith("registry:")
+          ? String(asset.id || "").trim()
+          : String(asset.registryAssetId || asset.id || "").trim();
       lines.push(`${index + 1}. ${asset.name || "未命名 iNFT"}`);
       lines.push(`   类型：${kindLabel}`);
       lines.push(`   状态：${statusLabel}`);
-      lines.push(`   样本数：${Number(asset.sampleCount || 0)}`);
+      if (primaryINFTID) lines.push(`   iNFT ID：${primaryINFTID}`);
       if (asset.registryAssetId) lines.push(`   Registry Asset ID：${asset.registryAssetId}`);
       if (asset.storageRef) lines.push(`   Storage Ref：${asset.storageRef}`);
       if (asset.registryTxHash) lines.push(`   Registry Tx：${asset.registryTxHash}`);
       if (asset.registryExplorerTxUrl) lines.push(`   Registry Explorer：${asset.registryExplorerTxUrl}`);
-      if (asset.id) lines.push(`   本地 iNFT ID：${asset.id}`);
-      if (asset.parentInftId) lines.push(`   Parent iNFT：${asset.parentInftId}`);
+      if (asset.id && !String(asset.id).startsWith("registry:")) lines.push(`   本地 iNFT ID：${asset.id}`);
     });
   return lines.join("\n");
 }
@@ -2440,6 +2532,17 @@ function findRegisteredINFTAssetForTransfer(message) {
     })
     .sort((a, b) => String(b.name || "").length - String(a.name || "").length);
   if (byName.length) return byName[0];
+
+  const wantsLatest = ["收到", "接收", "最新", "latest", "new"].some((keyword) => lower.includes(keyword));
+  if (wantsLatest) {
+    return assets
+      .slice()
+      .sort((a, b) => {
+        const ta = new Date(String(a?.registryRegisteredAt || a?.createdAt || 0)).getTime() || 0;
+        const tb = new Date(String(b?.registryRegisteredAt || b?.createdAt || 0)).getTime() || 0;
+        return tb - ta;
+      })[0];
+  }
 
   if (assets.length === 1) return assets[0];
   return null;
